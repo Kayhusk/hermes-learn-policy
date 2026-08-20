@@ -1,6 +1,5 @@
 import importlib.util
 import inspect
-import json
 import sys
 import tempfile
 import unittest
@@ -23,7 +22,7 @@ def load_plugin():
 
 
 class PluginContractTest(unittest.TestCase):
-    def test_registers_only_route_protection_and_custom_diagnostics(self):
+    def test_registers_only_route_protection_and_learning_prompt(self):
         plugin = load_plugin()
 
         class Context:
@@ -36,7 +35,7 @@ class PluginContractTest(unittest.TestCase):
         ctx = Context()
         plugin.register(ctx)
 
-        self.assertEqual(set(ctx.hooks), {"pre_tool_call", "transform_tool_result"})
+        self.assertEqual(set(ctx.hooks), {"pre_tool_call", "pre_llm_call"})
         self.assertFalse(hasattr(plugin, "classify"))
         self.assertFalse(hasattr(plugin, "evaluate"))
         for callback in ctx.hooks.values():
@@ -136,82 +135,42 @@ class PluginContractTest(unittest.TestCase):
     def test_adapter_drift_disables_only_optional_advice(self):
         plugin = load_plugin()
         compat = sys.modules["hermes_learn_policy.compat"]
-        success = json.dumps({"success": True})
 
         with patch.object(compat, "_get_write_origin", None):
             compat.ensure_compatible()
-            self.assertIsNone(
-                plugin.transform_tool_result(
-                    tool_name="skill_manage",
-                    args={
-                        "action": "edit",
-                        "name": "example",
-                        "content": "Current status: changing.",
-                    },
-                    result=success,
-                )
-            )
+            self.assertIsNone(plugin.pre_llm_call())
 
         with patch.object(compat, "_get_file_mutation_targets", None):
             with self.assertRaises(compat.HermesCompatibilityError):
                 compat.ensure_compatible()
 
-    def test_custom_diagnostics_are_background_full_content_advice_only(self):
+    def test_learning_prompt_is_background_only(self):
         plugin = load_plugin()
         gate = sys.modules["hermes_learn_policy.gate"]
-        success = json.dumps({"success": True, "message": "Skill updated"})
-        noisy = (
-            "Current status: rollout complete.\n"
-            "Incident 2026-08-20 failed under /home/alice/project."
-        )
 
         with patch.object(gate, "current_write_origin", return_value="background_review"):
-            transformed = plugin.transform_tool_result(
-                tool_name="skill_manage",
-                args={"action": "edit", "name": "example", "content": noisy},
-                result=success,
-            )
-            self.assertIn("Learning-policy diagnostic", transformed)
-            self.assertIn("volatile-status", transformed)
-            self.assertIn("dated-evidence", transformed)
-            self.assertIn("machine-local", transformed)
-            self.assertNotIn("/home/alice/project", transformed)
+            result = plugin.pre_llm_call()
 
-            self.assertIsNone(
-                plugin.transform_tool_result(
-                    tool_name="skill_manage",
-                    args={"action": "create", "name": "clean", "content": "Reusable procedure."},
-                    result=success,
-                )
-            )
-            for args in (
-                {"action": "patch", "name": "example", "new_string": noisy},
-                {"action": "write_file", "name": "example", "file_path": "references/a.md", "file_content": noisy},
-                {"action": "remove_file", "name": "example", "file_path": "references/a.md"},
-                {"action": "delete", "name": "example", "absorbed_into": ""},
-            ):
-                self.assertIsNone(
-                    plugin.transform_tool_result(
-                        tool_name="skill_manage",
-                        args=args,
-                        result=success,
-                    )
-                )
-            self.assertIsNone(
-                plugin.transform_tool_result(
-                    tool_name="skill_manage",
-                    args={"action": "edit", "name": "example", "content": noisy},
-                    result=json.dumps({"success": False, "error": "failed"}),
-                )
-            )
+        self.assertEqual(set(result), {"context"})
+        context = result["context"]
+        self.assertIn("USER", context)
+        self.assertIn("MEMORY", context)
+        self.assertIn("skills", context)
+        self.assertIn("declarative facts", context)
+        self.assertIn("volatile status", context)
+        self.assertIn("task history", context)
+        self.assertIn("native `memory` and `skill_manage`", context)
 
         self.assertIsNone(
-            plugin.transform_tool_result(
-                tool_name="skill_manage",
-                args={"action": "edit", "name": "example", "content": noisy},
-                result=success,
-            )
+            plugin.pre_llm_call()
         )
+
+    def test_learning_prompt_skips_curator(self):
+        plugin = load_plugin()
+        gate = sys.modules["hermes_learn_policy.gate"]
+
+        with patch.object(gate, "current_write_origin", return_value="background_review"):
+            self.assertIsNone(plugin.pre_llm_call(platform="curator"))
 
 
 if __name__ == "__main__":

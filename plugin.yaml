@@ -1,6 +1,6 @@
 name: hermes-learn-policy
-version: "0.3.0"
-description: Native-aligned route protection and learning advice.
+version: "0.4.0"
+description: Native learning guidance and route protection.
 provides_hooks:
   - pre_tool_call
-  - transform_tool_result
+  - pre_llm_call

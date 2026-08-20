@@ -1,6 +1,5 @@
-"""Route protection and bounded advice for Hermes learning writes."""
+"""Route protection and prompt-first guidance for Hermes learning."""
 
-import json
 import os
 import re
 from pathlib import Path
@@ -8,11 +7,15 @@ from pathlib import Path
 from .compat import current_write_origin, file_mutation_targets
 
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
-STATUS_RE = re.compile(r"(?im)^\s*(?:current|project|implementation|rollout) status\s*:")
-DATED_EVIDENCE_RE = re.compile(
-    r"(?is)\b(?:incident|evidence|audit|postmortem)\b.{0,80}\b20\d{2}-\d{2}-\d{2}\b"
-)
-MACHINE_PATH_RE = re.compile(r"(?i)(?:^|[\s`'\"])(?:/home/|/Users/|[A-Z]:\\Users\\)")
+LEARNING_QUALITY_GUIDANCE = """Hermes Learn Policy — background learning quality
+
+Use Hermes's native `memory` and `skill_manage` tools for every write. Before writing, classify the durable owner and save only material that will improve future sessions:
+
+- USER: stable facts about the user, preferences, communication style, and expectations.
+- MEMORY: stable agent or environment facts, conventions, and corrections. Write declarative facts, not commands to a future agent.
+- skills: reusable class-level procedures and decision methods. Keep active guidance portable; put session-specific evidence in an appropriate reference only when it has lasting diagnostic value.
+
+Do not persist secrets, volatile status, task history, completion claims, issue/PR/commit/test receipts, duplicated meaning, misplaced procedures, or unnecessary machine-local paths. Prefer the current project/runtime source, session history, or no write when those are the correct owners. Preserve unrelated existing content and use one native atomic memory batch when several entries change together."""
 
 
 def _home():
@@ -95,52 +98,7 @@ def pre_tool_call(tool_name="", args=None, home=None, **kwargs):
         return None
 
 
-def _diagnostics(content):
-    findings = []
-    if STATUS_RE.search(content):
-        findings.append(
-            ("volatile-status", "Move mutable status to current project or runtime source.")
-        )
-    if DATED_EVIDENCE_RE.search(content):
-        findings.append(
-            ("dated-evidence", "Keep dated incidents in evidence; retain only the reusable lesson.")
-        )
-    if MACHINE_PATH_RE.search(content):
-        findings.append(
-            ("machine-local", "Confirm this is intentionally profile-local, not portable guidance.")
-        )
-    return findings
-
-
-def _successful(result):
-    if not isinstance(result, str):
-        return False
-    try:
-        payload = json.loads(result)
-    except (TypeError, ValueError):
-        return False
-    return (
-        isinstance(payload, dict)
-        and payload.get("success") is True
-        and not payload.get("staged")
-        and not payload.get("error")
-    )
-
-
-def transform_tool_result(tool_name="", args=None, result=None, **kwargs):
-    if (
-        tool_name != "skill_manage"
-        or not isinstance(args, dict)
-        or args.get("action") not in {"create", "edit"}
-        or current_write_origin() != "background_review"
-        or not _successful(result)
-        or not isinstance(args.get("content"), str)
-    ):
+def pre_llm_call(platform="", **kwargs):
+    if str(platform).lower() == "curator" or current_write_origin() != "background_review":
         return None
-    findings = _diagnostics(args["content"])
-    if not findings:
-        return None
-    lines = ["Learning-policy diagnostic"]
-    lines.extend(f"- [{rule}] {message}" for rule, message in findings)
-    lines.append("Review these signals and self-correct only where they apply.")
-    return result + "\n\n---\n" + "\n".join(lines)
+    return {"context": LEARNING_QUALITY_GUIDANCE}
