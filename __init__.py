@@ -1,7 +1,7 @@
 """Hermes Learn Policy plugin."""
 
 from .compat import ensure_compatible
-from .gate import classify, evaluate, pre_tool_call, transform_tool_result
+from .gate import pre_tool_call, transform_tool_result
 
 
 def register(ctx):
@@ -10,10 +10,4 @@ def register(ctx):
     ctx.register_hook("transform_tool_result", transform_tool_result)
 
 
-__all__ = [
-    "classify",
-    "evaluate",
-    "pre_tool_call",
-    "transform_tool_result",
-    "register",
-]
+__all__ = ["pre_tool_call", "transform_tool_result", "register"]

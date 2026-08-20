@@ -1,6 +1,6 @@
 name: hermes-learn-policy
-version: "0.2.0"
-description: Bounded safety checks and diagnostics for Hermes learning writes.
+version: "0.3.0"
+description: Native-aligned route protection and learning advice.
 provides_hooks:
   - pre_tool_call
   - transform_tool_result
