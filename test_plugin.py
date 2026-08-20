@@ -22,20 +22,28 @@ def load_plugin():
 
 
 class PluginContractTest(unittest.TestCase):
-    def test_registers_only_route_protection_and_learning_prompt(self):
+    def test_registers_route_protection_and_one_learning_section(self):
         plugin = load_plugin()
 
         class Context:
             def __init__(self):
                 self.hooks = {}
+                self.sections = {}
 
             def register_hook(self, name, callback):
                 self.hooks[name] = callback
 
+            def register_system_prompt_section(self, name, content, **options):
+                self.sections[name] = (content, options)
+
         ctx = Context()
         plugin.register(ctx)
 
-        self.assertEqual(set(ctx.hooks), {"pre_tool_call", "pre_llm_call"})
+        self.assertEqual(set(ctx.hooks), {"pre_tool_call"})
+        self.assertEqual(set(ctx.sections), {"hermes-learn-policy.learning-quality"})
+        callback, options = ctx.sections["hermes-learn-policy.learning-quality"]
+        self.assertIs(callback, plugin.learning_quality_section)
+        self.assertEqual(options, {"position": "after_memory", "max_chars": 3000})
         self.assertFalse(hasattr(plugin, "classify"))
         self.assertFalse(hasattr(plugin, "evaluate"))
         for callback in ctx.hooks.values():
@@ -48,7 +56,6 @@ class PluginContractTest(unittest.TestCase):
 
     def test_preserves_every_native_skill_manage_capability(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learn_policy.gate"]
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             operations = (
@@ -69,14 +76,13 @@ class PluginContractTest(unittest.TestCase):
             for args in operations:
                 self.assertIsNone(plugin.pre_tool_call("skill_manage", args, home=home), args)
 
-            with patch.object(gate, "current_write_origin", return_value="background_review"):
-                self.assertIsNone(
-                    plugin.pre_tool_call(
-                        "skill_manage",
-                        {"action": "patch", "name": "bundled", "old_string": "a", "new_string": "b"},
-                        home=home,
-                    )
+            self.assertIsNone(
+                plugin.pre_tool_call(
+                    "skill_manage",
+                    {"action": "patch", "name": "bundled", "old_string": "a", "new_string": "b"},
+                    home=home,
                 )
+            )
 
     def test_blocks_direct_learning_file_bypasses_and_private_keys(self):
         plugin = load_plugin()
@@ -132,45 +138,33 @@ class PluginContractTest(unittest.TestCase):
             self.assertIsNone(plugin.pre_tool_call("terminal", {"command": "true"}))
             self.assertIsNone(plugin.pre_tool_call("write_file", {"path": "/tmp/notes"}))
 
-    def test_adapter_drift_disables_only_optional_advice(self):
-        plugin = load_plugin()
+    def test_required_file_adapter_drift_fails_registration(self):
+        load_plugin()
         compat = sys.modules["hermes_learn_policy.compat"]
-
-        with patch.object(compat, "_get_write_origin", None):
-            compat.ensure_compatible()
-            self.assertIsNone(plugin.pre_llm_call())
 
         with patch.object(compat, "_get_file_mutation_targets", None):
             with self.assertRaises(compat.HermesCompatibilityError):
                 compat.ensure_compatible()
 
-    def test_learning_prompt_is_background_only(self):
+    def test_learning_section_covers_native_writers_and_preserves_consolidated_clauses(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learn_policy.gate"]
 
-        with patch.object(gate, "current_write_origin", return_value="background_review"):
-            result = plugin.pre_llm_call()
-
-        self.assertEqual(set(result), {"context"})
-        context = result["context"]
+        context = plugin.learning_quality_section({"platform": "telegram"})
         self.assertIn("USER", context)
         self.assertIn("MEMORY", context)
         self.assertIn("skills", context)
         self.assertIn("declarative facts", context)
         self.assertIn("volatile status", context)
         self.assertIn("task history", context)
-        self.assertIn("native `memory` and `skill_manage`", context)
+        self.assertIn("native `memory`", context)
+        self.assertIn("`skill_manage` write", context)
+        self.assertIn("preserve every unaffected clause", context)
+        self.assertIn("When considering", context)
 
-        self.assertIsNone(
-            plugin.pre_llm_call()
-        )
-
-    def test_learning_prompt_skips_curator(self):
+    def test_learning_section_skips_curator(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learn_policy.gate"]
 
-        with patch.object(gate, "current_write_origin", return_value="background_review"):
-            self.assertIsNone(plugin.pre_llm_call(platform="curator"))
+        self.assertEqual(plugin.learning_quality_section({"platform": "curator"}), "")
 
 
 if __name__ == "__main__":

@@ -10,12 +10,6 @@ except ImportError as exc:
 else:
     _REQUIRED_IMPORT_ERROR = None
 
-try:
-    from tools.skill_provenance import get_current_write_origin as _get_write_origin
-except ImportError:
-    _get_write_origin = None
-
-
 class HermesCompatibilityError(RuntimeError):
     pass
 
@@ -26,12 +20,6 @@ def ensure_compatible():
         raise HermesCompatibilityError(
             "Hermes file-target adapter is unavailable; revalidate this plugin against the installed Hermes version"
         ) from _REQUIRED_IMPORT_ERROR
-
-
-def current_write_origin():
-    """Return an inert value when the optional diagnostic origin moves."""
-    return "unknown" if _get_write_origin is None else str(_get_write_origin())
-
 
 def file_mutation_targets(tool_name, args):
     ensure_compatible()

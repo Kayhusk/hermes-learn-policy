@@ -4,18 +4,18 @@ import os
 import re
 from pathlib import Path
 
-from .compat import current_write_origin, file_mutation_targets
+from .compat import file_mutation_targets
 
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
-LEARNING_QUALITY_GUIDANCE = """Hermes Learn Policy — background learning quality
+LEARNING_QUALITY_GUIDANCE = """Hermes Learn Policy — native learning quality
 
-Use Hermes's native `memory` and `skill_manage` tools for every write. Before writing, classify the durable owner and save only material that will improve future sessions:
+When considering a native `memory` or `skill_manage` write, classify the durable owner first and save only material that will improve future sessions:
 
 - USER: stable facts about the user, preferences, communication style, and expectations.
 - MEMORY: stable agent or environment facts, conventions, and corrections. Write declarative facts, not commands to a future agent.
 - skills: reusable class-level procedures and decision methods. Keep active guidance portable; put session-specific evidence in an appropriate reference only when it has lasting diagnostic value.
 
-Do not persist secrets, volatile status, task history, completion claims, issue/PR/commit/test receipts, duplicated meaning, misplaced procedures, or unnecessary machine-local paths. Prefer the current project/runtime source, session history, or no write when those are the correct owners. Preserve unrelated existing content and use one native atomic memory batch when several entries change together."""
+Do not persist secrets, volatile status, task history, completion claims, issue/PR/commit/test receipts, duplicated meaning, misplaced procedures, or unnecessary machine-local paths. Prefer the current project/runtime source, session history, or no write when those are the correct owners. When replacing a consolidated entry, preserve every unaffected clause rather than silently dropping facts to make room. Preserve unrelated entries and use one native atomic memory batch when several entries change together."""
 
 
 def _home():
@@ -98,7 +98,7 @@ def pre_tool_call(tool_name="", args=None, home=None, **kwargs):
         return None
 
 
-def pre_llm_call(platform="", **kwargs):
-    if str(platform).lower() == "curator" or current_write_origin() != "background_review":
-        return None
-    return {"context": LEARNING_QUALITY_GUIDANCE}
+def learning_quality_section(session_info):
+    if str(session_info.get("platform", "")).lower() == "curator":
+        return ""
+    return LEARNING_QUALITY_GUIDANCE
