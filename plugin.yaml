@@ -1,0 +1,5 @@
+name: hermes-learning-quality-gate
+version: "0.1.0"
+description: Deterministic admission gate for autonomous Hermes learning writes.
+provides_hooks:
+  - pre_tool_call
