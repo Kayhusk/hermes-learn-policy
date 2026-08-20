@@ -1,4 +1,4 @@
-"""Hermes learning-quality gate plugin."""
+"""Hermes Learn Policy plugin."""
 
 from .compat import ensure_compatible
 from .gate import classify, evaluate, pre_tool_call, transform_tool_result

@@ -1,4 +1,4 @@
-name: hermes-learning-quality-gate
+name: hermes-learn-policy
 version: "0.2.0"
 description: Bounded safety checks and diagnostics for Hermes learning writes.
 provides_hooks:

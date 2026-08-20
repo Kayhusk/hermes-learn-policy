@@ -1,4 +1,4 @@
-# Hermes Learning Quality Gate
+# Hermes Learn Policy
 
 Standalone Hermes plugin for bounded learning-write safety and advisory quality diagnostics.
 

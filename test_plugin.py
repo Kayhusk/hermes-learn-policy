@@ -13,7 +13,7 @@ ROOT = Path(__file__).parent
 
 def load_plugin():
     spec = importlib.util.spec_from_file_location(
-        "hermes_learning_quality_gate",
+        "hermes_learn_policy",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
@@ -50,7 +50,7 @@ class PluginContractTest(unittest.TestCase):
 
     def test_preserves_v01_classify_and_evaluate_behavior(self):
         plugin = load_plugin()
-        compat = sys.modules["hermes_learning_quality_gate.compat"]
+        compat = sys.modules["hermes_learn_policy.compat"]
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             skills = home / "skills"
@@ -109,7 +109,7 @@ class PluginContractTest(unittest.TestCase):
 
     def test_preserves_every_native_skill_manage_capability(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learning_quality_gate.gate"]
+        gate = sys.modules["hermes_learn_policy.gate"]
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             skills = home / "skills"
@@ -195,7 +195,7 @@ class PluginContractTest(unittest.TestCase):
 
     def test_fails_closed_only_for_relevant_learning_calls(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learning_quality_gate.gate"]
+        gate = sys.modules["hermes_learn_policy.gate"]
         with patch.object(gate, "_pre_decision", side_effect=RuntimeError("boom")):
             result = plugin.pre_tool_call(
                 "skill_manage", {"action": "create", "name": "x", "content": "safe"}
@@ -206,7 +206,7 @@ class PluginContractTest(unittest.TestCase):
 
     def test_appends_bounded_diagnostics_only_for_background_writes(self):
         plugin = load_plugin()
-        gate = sys.modules["hermes_learning_quality_gate.gate"]
+        gate = sys.modules["hermes_learn_policy.gate"]
         success = json.dumps({"success": True, "message": "Skill updated"})
         noisy = (
             "Current status: rollout complete.\n"
