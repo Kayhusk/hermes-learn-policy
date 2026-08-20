@@ -1,16 +1,19 @@
 # Hermes Learning Quality Gate
 
-Standalone Hermes plugin scaffold for deterministic admission checks before autonomous learning writes persist.
+Standalone Hermes plugin for bounded learning-write safety and advisory quality diagnostics.
 
 Current slice:
 
-- registers the public `pre_tool_call` hook;
-- routes `skill_manage` and `memory` learning calls;
-- blocks direct writes to governed skill, MEMORY, and USER files;
-- blocks bundled, Hub-installed, and plugin-owned skill mutation;
-- fails closed when provenance classification errors.
+- preserves native `skill_manage` create, edit, fuzzy patch, delete/archive, references, templates, scripts, and assets;
+- blocks direct file-tool writes to current-profile durable learning files;
+- blocks explicit `file_path="SKILL.md"` bypass shapes so native structural validation/lifecycle stays in charge;
+- blocks obvious private-key material before persistence;
+- appends bounded diagnostics after successful autonomous background create/edit writes while foreground writes remain untouched;
+- fails closed only for relevant learning calls.
 
-Full semantic admission policy and rollout are intentionally not included yet.
+The private coupling is isolated in `compat.py`, currently adapting Hermes write origin and native file-mutation target extraction. Registration and Plugin Doctor fail clearly if either symbol moves. Future native provenance, resolver, linter, or lifecycle reads belong in the same compatibility boundary only when an active slice uses them.
+
+Semantic diagnostics are advisory. The plugin does not claim package transactions, authoritative cross-root provenance, internal non-tool mutation coverage, or fleet rollout.
 
 ## Check
 
