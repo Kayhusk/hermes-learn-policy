@@ -24,9 +24,10 @@ The policy applies only when the model considers a native learning write:
 - USER holds stable user facts and preferences;
 - MEMORY holds durable agent or environment facts and conventions, written declaratively;
 - skills hold reusable class-level procedures and decision methods;
-- before a skill write, the model inspects the existing owner and linked references through native discovery;
+- before a memory write, the model loads `profile-memory-governance`, reads the complete current target, and preserves unrelated clauses verbatim or makes no write;
+- before a skill write, the model loads `skill-governance` and inspects the existing owner and linked references through native discovery;
 - same-responsibility guidance updates its current owner, a confirmed ownership gap may create a new owner, and related but distinct responsibilities remain separate and linked;
-- multi-file learning is kept coherent: no support-file half-write, unchanged retry, or sibling workaround after a native rejection;
+- multi-file learning is kept coherent: no support-file half-write, repeated rejection, or sibling workaround;
 - volatile status, task history, completion receipts, misplaced procedures, duplication, secrets, and unnecessary machine-local detail stay with their proper owners or are not saved;
 - replacing a consolidated entry preserves every unaffected clause instead of silently deleting facts to make room.
 
@@ -52,9 +53,10 @@ This plugin does not:
 2. **Local proof:** verify ordinary-session rendering, Curator exclusion, native capability pass-through, consolidated-clause preservation, adapter failure, and deterministic safety with focused tests and Plugin Doctor.
 3. **Fresh-session adoption:** update the selected profile checkout and begin a new session after its gateway restart so Hermes freezes the corrected section into that session.
 4. **Fleet advisory pilot:** observe real foreground and automatic skill or MEMORY/USER writes across approved non-default profiles; preserve writer and profile identity in every finding.
-5. **Apollo evidence:** one automatic review created durable but overlapping guidance, then repeated a rejected parent patch after `skill_view`; existing content and MEMORY/USER remained unchanged.
-6. **v0.6 correction:** inspect current owners before a skill write, preserve distinct responsibilities, avoid partial multi-call packages, and stop unchanged native retries.
-7. **Promotion gate:** semantic quality remains advisory. Promote only deterministic trust-boundary rules with safe remediation and positive plus adjacent-negative evidence.
+5. **v0.6 evidence:** owner discovery occurred, but automatic reviewers still repeated rejected skill writes and one Apollo USER replacement dropped unrelated durable clauses.
+6. **v0.7 correction:** route memory and skill writers through the existing governance skills, require complete-target preservation for memory replacement, and make one rejection end the review.
+7. **Final prompt-first gate:** run isolated USER-preservation, duplicate-owner, new-owner, and rejection-stop pilots. If they fail, keep the plugin advisory and escalate the native writer/read-context defects instead of adding shadow machinery.
+8. **Promotion gate:** semantic quality remains advisory. Promote only deterministic trust-boundary rules with safe remediation and positive plus adjacent-negative evidence.
 
 ## Check
 
