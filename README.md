@@ -24,6 +24,9 @@ The policy applies only when the model considers a native learning write:
 - USER holds stable user facts and preferences;
 - MEMORY holds durable agent or environment facts and conventions, written declaratively;
 - skills hold reusable class-level procedures and decision methods;
+- before a skill write, the model inspects the existing owner and linked references through native discovery;
+- same-responsibility guidance updates its current owner, a confirmed ownership gap may create a new owner, and related but distinct responsibilities remain separate and linked;
+- multi-file learning is kept coherent: no support-file half-write, unchanged retry, or sibling workaround after a native rejection;
 - volatile status, task history, completion receipts, misplaced procedures, duplication, secrets, and unnecessary machine-local detail stay with their proper owners or are not saved;
 - replacing a consolidated entry preserves every unaffected clause instead of silently deleting facts to make room.
 
@@ -47,11 +50,11 @@ This plugin does not:
 
 1. **One policy section:** keep semantic learning quality in the cache-safe ordinary-session section; keep only deterministic route and private-key protections in `pre_tool_call`.
 2. **Local proof:** verify ordinary-session rendering, Curator exclusion, native capability pass-through, consolidated-clause preservation, adapter failure, and deterministic safety with focused tests and Plugin Doctor.
-3. **Fresh-session adoption:** update Orion, restart its gateway, and begin a new session so Hermes builds a new frozen prompt containing the section.
-4. **Orion pilots:** observe one real foreground consolidated USER replacement and one real automatic skill or MEMORY/USER write. Each must preserve unrelated content and require no plugin-owned correction loop.
-5. **Evidence gate:** if either writer misses a concrete case, record that exact false negative before changing policy wording. Do not prebuild scanners, correction loops, receipts, or lifecycle machinery.
-6. **Promotion gate:** semantic quality remains advisory. Promote only deterministic trust-boundary rules with safe remediation and positive plus adjacent-negative evidence.
-7. **Rollout:** expand beyond Orion only after both writer paths pass and Eddy explicitly approves the rollout.
+3. **Fresh-session adoption:** update the selected profile checkout and begin a new session after its gateway restart so Hermes freezes the corrected section into that session.
+4. **Fleet advisory pilot:** observe real foreground and automatic skill or MEMORY/USER writes across approved non-default profiles; preserve writer and profile identity in every finding.
+5. **Apollo evidence:** one automatic review created durable but overlapping guidance, then repeated a rejected parent patch after `skill_view`; existing content and MEMORY/USER remained unchanged.
+6. **v0.6 correction:** inspect current owners before a skill write, preserve distinct responsibilities, avoid partial multi-call packages, and stop unchanged native retries.
+7. **Promotion gate:** semantic quality remains advisory. Promote only deterministic trust-boundary rules with safe remediation and positive plus adjacent-negative evidence.
 
 ## Check
 

@@ -159,7 +159,18 @@ class PluginContractTest(unittest.TestCase):
         self.assertIn("native `memory`", context)
         self.assertIn("`skill_manage` write", context)
         self.assertIn("preserve every unaffected clause", context)
+        self.assertIn("`skills_list` and `skill_view`", context)
+        self.assertIn("same responsibility or procedure", context)
+        self.assertIn("inspection confirms no existing owner", context)
+        self.assertIn("native creation remains available", context)
+        self.assertNotIn("otherwise make no write", context)
+        self.assertIn("keep them separate and link", context)
+        self.assertIn("one self-contained native mutation or no write", context)
+        self.assertIn("do not retry", context)
         self.assertIn("When considering", context)
+        self.assertLessEqual(len(context), 3000)
+        for workspace_term in ("Foldly", "SourceBand", "Apollo", "Orion", "KYD-"):
+            self.assertNotIn(workspace_term, context)
 
     def test_learning_section_skips_curator(self):
         plugin = load_plugin()

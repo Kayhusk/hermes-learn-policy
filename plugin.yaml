@@ -1,5 +1,5 @@
 name: hermes-learn-policy
-version: "0.5.0"
+version: "0.6.0"
 description: Cache-safe native learning policy and route protection.
 provides_hooks:
   - pre_tool_call
