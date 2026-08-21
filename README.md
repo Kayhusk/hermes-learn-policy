@@ -1,68 +1,140 @@
 # Hermes Learn Policy
 
-Standalone Hermes plugin that gives native learning writers one cache-safe quality contract and protects native learning routes without replacing Hermes's mutation system.
+Standalone Hermes plugin that dynamically guides native learning writers and protects native learning routes without replacing Hermes's mutation system.
 
 ## Responsibility boundary
 
-**Native Hermes owns** `skill_manage` and `memory` mutation, target resolution, validation, capacity, locking, atomic writes, staging, background ownership, read-before-write checks, security rollback, pins and archive/delete behavior, the mutation ledger, lifecycle facts, provenance, and native skill linting.
+**Native Hermes owns** `memory` and `skill_manage`, target resolution, validation, capacity, locking, atomic writes, staging, ownership, provenance, rollback, pins, linting, and archive/delete lifecycle.
 
 **Hermes Learn Policy owns only:**
 
-- registering one bounded system prompt section for ordinary sessions so foreground agents and inherited automatic background reviewers receive the same conditional learning guidance;
-- returning empty section content for the separate `platform="curator"` consolidation runtime;
-- redirecting generic `write_file` and `patch` attempts against current-profile `MEMORY.md`, `USER.md`, or `skills/` back to their native tools;
-- rejecting obvious private-key material before a model-dispatched `skill_manage` or `memory` write.
+- lane-aware `pre_llm_call` guidance for foreground turns, automatic background review, and Curator;
+- deterministic `pre_tool_call` protection for direct durable-learning file bypasses, obvious private keys, destructive Curator terminal commands, and unchanged retries after native rejection;
+- observational `post_tool_call` tracking of native rejection and relevant `skill_view` evidence in bounded process memory.
 
-`compat.py` contains one version-scoped private read: Hermes's file-mutation target extractor. It imports no write-origin, resolver, linter, mutation, lifecycle, ownership, or fuzzy-match function. Adapter drift fails registration because route protection would otherwise be false.
+It does not write USER, MEMORY, or skills itself.
 
-## Cache-safe quality path
+## Dynamic native path
 
-Hermes documents `register_system_prompt_section` as the owner for bounded, durable plugin guidance. Hermes renders the section once for a new ordinary session and freezes it into the cached system prompt. The main agent receives it, and automatic background review inherits that same cached prompt without a second injection. Curator gets empty content.
+```text
+foreground AIAgent turn
+background_review AIAgent turn
+Curator AIAgent turn
+        |
+        v
+pre_llm_call -> lane policy appended to the API-bound user message
+        |
+        v
+native model decision
+        |
+        v
+pre_tool_call -> deterministic route/safety/retry checks
+        |
+        v
+native memory / skill_manage
+        |
+        v
+post_tool_call -> observe native outcome only
+```
 
-The policy applies only when the model considers a native learning write:
+Hermes binds write origin before `pre_llm_call`. The hook runs once for the actual turn and its context is appended to the API-only user message, preserving the cached system prompt and clean transcript. Background review uses normal `AIAgent.run_conversation()` with origin `background_review`. Curator uses normal `AIAgent.run_conversation()` with `platform="curator"`.
 
-- USER holds stable user facts and preferences;
-- MEMORY holds durable agent or environment facts and conventions, written declaratively;
-- skills hold reusable class-level procedures and decision methods;
-- before a memory write, the model loads `profile-memory-governance`, reads the complete current target, and preserves unrelated clauses verbatim or makes no write;
-- before a skill write, the model loads `skill-governance` and inspects the existing owner and linked references through native discovery;
-- same-responsibility guidance updates its current owner, a confirmed ownership gap may create a new owner, and related but distinct responsibilities remain separate and linked;
-- multi-file learning is kept coherent: no support-file half-write, repeated rejection, or sibling workaround;
-- volatile status, task history, completion receipts, misplaced procedures, duplication, secrets, and unnecessary machine-local detail stay with their proper owners or are not saved;
-- replacing a consolidated entry preserves every unaffected clause instead of silently deleting facts to make room.
+## Lane policy
 
-The model still decides whether to write and uses only native `memory` and `skill_manage`. The plugin does not inspect or rewrite persisted content afterward.
+### Foreground
+
+The current user task remains primary. Learning policy applies only when the turn considers `memory` or `skill_manage`.
+
+- USER holds stable user facts and preferences.
+- MEMORY holds durable environment and agent facts, written declaratively.
+- Skills hold reusable class-level procedures and decision methods.
+- Replacements preserve every unrelated clause.
+- Volatile status, task history, completion receipts, secrets, duplicated meaning, misplaced procedures, and unnecessary machine-local paths are not saved.
+
+### Automatic background review
+
+- Inspect existing owners through native `skills_list` and `skill_view` before writing.
+- A no-write result is valid.
+- Update the current owner when native policy permits; create only after confirmed ownership absence.
+- Do not create siblings to bypass ownership or read-before-write rejection.
+- After native rejection, only a meaningfully changed, cause-directed recovery is valid.
+
+### Curator
+
+Curator receives a separate skill-only policy. It preserves native Curator ownership, pins, provenance, and archive/delete behavior. Terminal remains available through a small standard-library read-only command allowlist; other autonomous terminal commands are refused so durable changes stay on native `skill_manage`.
+
+## Bounded rejection handling
+
+`post_tool_call` records only:
+
+- session ID;
+- turn ID;
+- SHA-256 of tool name plus arguments;
+- the relevant skill-view generation.
+
+`pre_llm_call` records only the lane label for the same session and turn so `pre_tool_call` can distinguish Curator from ordinary background review without relying on an unavailable pre-tool platform field.
+
+Raw arguments, skill names, learning content, and secrets are never stored in retry state. Arguments and skill identities are hashed before storage. Rejection, view, and lane maps are each capped at 256 entries per plugin process.
+
+`pre_tool_call` refuses an unchanged learning call after native rejection. Changed arguments are allowed. A successful `skill_view` for the same skill permits one same-argument retry and consumes that allowance atomically; an unrelated skill view does not. If native rejects again, the next unchanged attempt is refused.
+
+## Deterministic protection
+
+The plugin also:
+
+- redirects generic `write_file` or `patch` calls targeting current-profile USER, MEMORY, or local skills back to native learning tools;
+- rejects obvious private-key material before model-dispatched `memory` or `skill_manage` writes;
+- fails closed on internal errors only after a native learning route is known;
+- leaves unrelated tools and every native `skill_manage` operation available.
+
+## Compatibility boundary
+
+`compat.py` contains two version-scoped read-only adapters to installed Hermes:
+
+- current write origin;
+- native file-mutation target extraction;
+
+It imports no private mutation, resolver, linter, lifecycle, ownership, terminal classifier, or fuzzy-patch function. Curator terminal classification uses only `shlex` and an explicit read-only command set. Plugin Doctor and focused tests are the upgrade gate.
 
 ## Explicit limits
 
 This plugin does not:
 
-- inject a second background-review prompt or alter the system prompt after a session begins;
-- inject learning policy into the separate Curator consolidation runtime;
-- rewrite, roll back, stage, reconcile, archive, or otherwise mutate learning content itself;
-- classify skill ownership or override Hermes's bundled, Hub, external, project, pinned, or curator policy;
-- rerun Hermes's linter, correlate lifecycle events, or maintain mutation receipts;
-- reconstruct fuzzy patches or claim package finalization;
-- intercept terminal writes, approved internal replay, dashboard/TUI internal mutations, or every non-tool learning path;
-- protect configured external skill directories from generic file tools;
-- claim rollout, fleet enforcement, or first-write quality before live pilots prove it.
+- modify Hermes core;
+- mutate, rewrite, roll back, stage, reconcile, archive, or lint learning content;
+- add a second memory or skill tool;
+- reconstruct native patches or target resolution;
+- persist rejection receipts;
+- intercept internal dashboard/TUI/approved-replay writes that bypass model-dispatched tools;
+- guarantee that a native background patch succeeds after `skill_view` when the installed host loses its read mark across tool-worker contexts.
 
-## Corrected course
+A read-receipt compatibility bridge is deliberately excluded from v0.8. Add it only if the dynamic pilot proves successful existing-owner updates still require one.
 
-1. **One policy section:** keep semantic learning quality in the cache-safe ordinary-session section; keep only deterministic route and private-key protections in `pre_tool_call`.
-2. **Local proof:** verify ordinary-session rendering, Curator exclusion, native capability pass-through, consolidated-clause preservation, adapter failure, and deterministic safety with focused tests and Plugin Doctor.
-3. **Fresh-session adoption:** update the selected profile checkout and begin a new session after its gateway restart so Hermes freezes the corrected section into that session.
-4. **Fleet advisory pilot:** observe real foreground and automatic skill or MEMORY/USER writes across approved non-default profiles; preserve writer and profile identity in every finding.
-5. **v0.6 evidence:** owner discovery occurred, but automatic reviewers still repeated rejected skill writes and one Apollo USER replacement dropped unrelated durable clauses.
-6. **v0.7 correction:** route memory and skill writers through the existing governance skills, require complete-target preservation for memory replacement, and make one rejection end the review.
-7. **Final prompt-first gate:** run isolated USER-preservation, duplicate-owner, new-owner, and rejection-stop pilots. If they fail, keep the plugin advisory and escalate the native writer/read-context defects instead of adding shadow machinery.
-8. **Promotion gate:** semantic quality remains advisory. Promote only deterministic trust-boundary rules with safe remediation and positive plus adjacent-negative evidence.
+## Evidence that selected v0.8
+
+The v0.7 fleet pilot proved the frozen policy section was present but too distant from the live decision:
+
+- Apollo repeated one rejected patch three times.
+- Talos continued after rejection and rewrote USER clauses without the required live-target read.
+- Orion stopped after one rejection but produced no successful owner update.
+- Metis did not adopt v0.7 in a fresh runtime.
+
+v0.8 moves semantic guidance to the same native `pre_llm_call` seam used by Ponytail and adds bounded native-result observation instead of adding shadow mutation machinery.
 
 ## Check
 
 ```bash
 python3 -m unittest -v test_plugin.py
 hermes plugins doctor . --ci
+python3 -m py_compile __init__.py compat.py gate.py test_plugin.py
 ```
 
-Source contract: [Hermes Event Hooks](https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks), especially cache-safe system prompt sections, plus installed `agent/background_review.py` for inherited-prompt behavior.
+Rollout is exact-commit only to approved non-default profiles. Gateway restart and fresh-session pickup remain operator-owned.
+
+Sources:
+
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks
+- installed `agent/turn_context.py`
+- installed `agent/background_review.py`
+- installed `agent/curator.py`
+- installed `model_tools.py`
