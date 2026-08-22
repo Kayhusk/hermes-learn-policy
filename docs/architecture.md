@@ -1,173 +1,94 @@
 # Architecture
 
-This is the technical page. It should still make sense without a decoder ring.
+![Hermes Learn Policy runtime architecture](architecture.png)
 
-Hermes Learn Policy adds guidance and checks at three points in the Hermes tool flow. Hermes remains the only part that saves USER facts, MEMORY facts, or skills.
+[Open the full-size HTML diagram](architecture.html).
 
-![Hermes Learn Policy technical flow](architecture.png)
+## Responsibilities
 
-[Open the full-size diagram](architecture.html).
+| Responsibility | Owner | Lifetime |
+|---|---|---|
+| Select learning guidance for the current work type | Hermes Learn Policy | Current model request |
+| Allow or block selected tool calls | Hermes Learn Policy, enforced by Hermes | Current tool call |
+| Record exact skill reads and autonomous retry state | Hermes Learn Policy | Current process and turn |
+| Save USER and MEMORY facts | Hermes `memory` | Durable |
+| Read skill files | Hermes `skill_view` | Current tool result |
+| Update skill files | Hermes `skill_manage` | Durable |
+| Validate paths and content, lock files, record history, and roll back writes | Hermes | Durable operation |
 
-## One profile is shown
-
-The diagram shows one running Hermes profile.
-
-In a multi-agent setup, install the plugin in each profile that should use it. Hermes treats each `HERMES_HOME` directory as a separate profile and loads a separate plugin copy for it. That copy keeps its own short-lived state. This stays true when profiles run as separate processes or when one gateway process serves several profiles, which Hermes calls multiplexing. Nothing in the plugin sends state, memories, or skill content to another agent.
-
-Using the same pinned commit across profiles gives every agent the same rules while keeping each profile independent.
-
-## A few plain terms
-
-- A **hook** is a function Hermes calls at a known point before or after work.
-- A **skill-read record** is a short in-memory note that Hermes successfully read one exact skill file.
-- A **retry record** remembers one rejected background write for the rest of that turn.
-- A **hash** is a one-way file or owner identity. The plugin uses hashes so it does not need to keep learning text in memory.
-
-## Call sequence
-
-```mermaid
-sequenceDiagram
-    participant H as Hermes
-    participant P as Learn Policy
-    participant M as Model
-    participant T as Hermes tools
-    participant F as USER, MEMORY, and skills
-
-    H->>P: pre_llm_call
-    P-->>H: guidance for this request
-    H->>M: user message plus guidance
-    M-->>H: no write or a tool request
-
-    alt Read a skill
-        H->>T: skill_view
-        T-->>H: result with exact file path
-        H->>P: post_tool_call
-        P->>P: remember this file read for the turn
-    else Save memory or update a skill
-        H->>P: pre_tool_call
-        P->>P: consume and close a matching retry before execution
-        P-->>H: allow or block with a reason
-        H->>T: memory or skill_manage
-        T->>F: check, lock, write, and record the change
-        T-->>H: result
-        H->>P: post_tool_call
-        P->>P: remember the first native rejection
-    else Direct file edit
-        H->>P: pre_tool_call
-        P-->>H: block when the target is a learning file
-    end
-```
-
-## Who owns what
-
-| Job | Owner |
-|---|---|
-| Load the plugin and call its hooks | Hermes |
-| Add guidance to the current model request | Hermes, using the plugin's hook result |
-| Save USER and MEMORY facts | Hermes `memory` |
-| Read and update skills | Hermes `skill_view` and `skill_manage` |
-| Check paths, content, ownership, locks, history, and rollback | Hermes |
-| Choose the learning rules, block direct routes, remember exact reads, and limit one retry | Hermes Learn Policy |
-| Store the final USER, MEMORY, and skill files | Hermes |
-
-## The three hooks
+## Hooks
 
 ### `pre_llm_call`
 
-Hermes tells the plugin what kind of work is running:
-
-- a regular user turn;
-- an automatic learning review;
-- Curator skill maintenance.
-
-The plugin returns the matching guidance. Hermes adds it to the current model request only. The saved user message, earlier conversation, and system prompt stay unchanged.
+Hermes identifies the work as foreground, automatic review, or Curator maintenance. The hook returns the matching learning guidance for the current model request.
 
 ### `pre_tool_call`
 
-Before selected tools run, the plugin checks:
+Before selected tools run, the hook checks:
 
-- whether a background retry still matches the same skill and file;
-- whether a file edit is trying to bypass `memory` or `skill_manage`;
-- whether Curator is using the shell only to inspect files;
-- whether saved learning contains obvious private-key text.
+- direct edits to learning files;
+- obvious private-key text in proposed learning;
+- Curator terminal commands;
+- autonomous retry ownership and target;
+- a confirmed read of the skill file being updated.
 
-The result is either no objection or a block with a `learning-policy` reason.
-
-If a background skill update follows a confirmed read of the same file, the plugin restores Hermes's built-in "this file was read" marker in the current tool call. Hermes then performs its normal checks.
+For a matching skill update, the plugin restores Hermes's native skill-read marker in the current tool context. Hermes then applies its normal checks. Other calls either continue unchanged or receive a specific `learning-policy` block reason.
 
 ### `post_tool_call`
 
-After a selected tool finishes, the plugin may remember:
+After a selected tool finishes, the hook records a successful read of one exact skill file. During autonomous work, it also records the first rejected memory or skill write. It does not alter the tool result.
 
-- one successful read of an exact skill file;
-- one rejected background memory or skill write.
+## Skill-read bridge
 
-It does not edit the tool result.
+Hermes records background skill reads in a Python `ContextVar`. A later tool call may run in another execution context and miss that marker even after `skill_view` succeeds.
 
-## Why the skill-read record exists
+The plugin records the resolved path from the successful read result. When the matching write begins, it restores Hermes's marker in that tool context. Hermes still performs the update through `skill_manage` and applies every native check.
 
-Hermes marks a background skill as read before allowing an update. That mark lives in Python's `ContextVar`, which keeps values local to one execution context.
+The plugin does not store skill text or call a private Hermes writer.
 
-A later tool call can run in another worker context and miss the mark even though `skill_view` succeeded. The plugin carries only the confirmed file identity into the matching write call, then asks Hermes to restore its own marker there.
+## Autonomous retry
 
-The plugin never edits the skill and never calls a hidden Hermes writer.
+Automatic review and Curator may retry one rejected skill write:
 
-## One retry, same target
+1. Hermes rejects the write.
+2. The same skill owner and exact file must be read again.
+3. One matching retry may continue.
+4. Success or another rejection closes learning writes for that review.
 
-Automatic review and Curator get one recovery chance per turn.
-
-1. Hermes rejects a skill write.
-2. The plugin remembers the skill owner and exact file.
-3. Hermes must successfully read that same file again.
-4. One matching retry may continue.
-5. Success or failure ends learning writes for that review.
-
-Changing the filename, switching skills, writing to MEMORY instead, or sending the same request twice does not create another chance. A rejected memory write ends learning writes immediately.
-
-Regular user-directed learning does not use this retry limit.
+Changing the owner or file does not create another attempt. A rejected memory write closes learning writes immediately. Foreground user-directed learning does not use this retry limit.
 
 ## Short-lived state
 
-The plugin keeps three small maps in the running process:
+The plugin keeps three maps keyed by session and turn:
 
-- work type by session and turn;
+- current work type;
 - confirmed skill reads;
 - rejected writes and retry use.
 
-Each map is limited to 256 entries. Old turns from the same session are removed when a new turn begins. Active work from another session is never pushed out to make room.
+Each map holds at most 256 entries. A new turn removes older entries from the same session but never evicts active work from another session. If the maps are full, automatic learning stops until a fresh turn frees capacity.
 
-The plugin stores no prompt, memory text, skill text, full tool request, credential, or saved record. If the maps are full, automatic learning is refused until a fresh turn frees space.
+The maps store lane names, owner and target hashes, and resolved file paths. They do not store prompts, memory text, skill text, full tool requests, credentials, or durable records.
 
-## Four narrow Hermes connections
+## Hermes dependencies
 
-`gate.py` uses Hermes's public `get_hermes_home()` function to follow the active profile, including profiles served by a shared gateway process.
+`gate.py` uses Hermes's public `get_hermes_home()` function so checks follow the active profile, including profiles served by a shared gateway.
 
-`compat.py` keeps four other connections in one place. Three read information. The fourth restores a short-lived Hermes marker and never writes learning content.
+`compat.py` keeps four version-dependent Hermes adapters in one module:
 
-| Hermes connection | Why the plugin needs it |
+| Hermes contract | Use |
 |---|---|
-| Whether the write came from regular work or automatic review | Choose the right guidance and retry rule |
-| Which files a proposed edit would change | Catch direct edits to learning files |
-| The exact path Hermes resolves for a relative filename | Check the same file Hermes will touch |
-| Restore Hermes's skill-read marker | Carry one confirmed read into the current worker context |
+| Current write origin | Select foreground or automatic-review guidance |
+| File mutation targets | Detect direct edits to learning files |
+| Native file-path resolution | Check the file Hermes would change |
+| Background skill-read marker | Restore one confirmed read in the current tool context |
 
-The plugin checks all four before registering. If Hermes moves or removes one, the plugin does not start. It never imports a hidden Hermes function that writes, deletes, validates, or rolls back learning content.
-
-## What can change
-
-| Result | How long it lasts | Who creates it |
-|---|---|---|
-| Learning guidance | Current model request | Plugin result, added by Hermes |
-| Allow or block decision | Current tool call | Plugin result, enforced by Hermes |
-| Skill-read and retry records | Current process and turn | Plugin memory only |
-| USER and MEMORY facts | Saved | Hermes `memory` |
-| Skill files and references | Saved | Hermes `skill_manage` |
+The plugin checks all four contracts before registering. If any contract is unavailable, registration fails. The compatibility module does not import private learning writers, deleters, validators, or rollback functions.
 
 ## Limits
 
-- The plugin is not a sandbox. It runs inside Hermes with the current user's permissions.
-- It checks tool calls made by the model. It does not claim control over every internal or manually performed file write.
-- The USER guidance reduces the chance that review instructions become fake user preferences. A prompt cannot mathematically prove where every paraphrased idea came from, so natural-use tests still matter.
-- Curator shell access uses a short list of read-only commands. Git is excluded because local Git settings can run other programs even during commands that look read-only.
+- The plugin is not a sandbox. It runs with the current user's permissions.
+- It checks model-requested tool calls, not every internal or manual file write.
+- Learning guidance reduces unsupported USER facts but cannot prove the origin of every paraphrased statement. Natural-use testing still matters.
+- Curator terminal access uses a fixed list of read-only commands. Git commands are excluded because Git configuration and hooks can execute other programs.
 
-Operational update checks and removal commands live in the main [README](../README.md).
+Installation, verification, and removal instructions are in the main [README](../README.md).

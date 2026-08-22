@@ -1,76 +1,44 @@
 # Hermes Learn Policy
 
-> Hermes can learn. It can also get a little too enthusiastic.
-
-Hermes Learn Policy helps Hermes agents save useful memories and skills without creating a second learning system behind the scenes.
-
-It gives the model clear rules before it considers a learning write. It also blocks a small set of routes that should never bypass Hermes's built-in `memory` and `skill_manage` tools.
-
-One agent or a small fleet. Same rules, separate notebooks.
-
-![Hermes Learn Policy architecture](docs/architecture.png)
-
-## Current status
-
-The source is public, but the plugin is not released.
-
-- Current source version: `0.8.3`
-- No GitHub Release or version tag
-- No Hermes community listing
-- No npm or PyPI package
-- No public license yet
-
-Version 0.8.3 passed its compatibility checks with Hermes Agent `0.20.4`. Check it again after updating Hermes before using it in a long-running profile.
+Hermes Learn Policy governs when a Hermes agent may save USER facts, MEMORY facts, or skills. It adds learning guidance before model calls and checks learning-related tool calls before Hermes runs them. Hermes remains the only component that writes lasting learning files.
 
 ## What it does
 
-- Adds short learning guidance before each model turn.
-- Uses different guidance for regular work, automatic learning review, and Curator maintenance.
-- Keeps USER facts tied to real user statements or another trusted source.
-- Confirms that the exact skill file was read before a matching background update.
-- Gives a rejected background skill write one honest retry, not a new filename and another lap.
-- Blocks direct edits to USER, MEMORY, and skill files when the model should use Hermes's built-in tools.
-- Blocks obvious private-key text from saved learning.
-- Keeps Curator shell access read-only.
+- Selects different guidance for foreground work, automatic learning review, and Curator maintenance.
+- Requires USER facts from autonomous reviews to be supported by a real user message or an independently verified source.
+- Carries a confirmed skill read into the matching background update.
+- Allows one same-file skill retry after a rejected autonomous write.
+- Blocks direct edits to USER, MEMORY, and skill files when the native learning tools should own the change.
+- Rejects obvious private-key text in proposed learning.
+- Limits Curator terminal use to approved read-only commands.
 
-Hermes still checks, locks, writes, tracks, and rolls back every saved change.
+Hermes continues to own validation, locking, persistence, history, and rollback.
 
-## One agent or many
+## Profile isolation
 
-Install the plugin separately in every Hermes profile that should use it.
+Install the plugin separately in each Hermes profile that needs the policy. Every profile keeps its own guidance, short-lived read and retry records, USER file, MEMORY file, and skills. A shared gateway does not change this boundary.
 
-Each running profile keeps its own:
-
-- learning guidance;
-- short-lived read and retry records;
-- USER, MEMORY, and skill files.
-
-Profiles do not share plugin state. The plugin does not coordinate agents, copy memories between them, or read another profile's learning files.
-
-Pinning the same commit across profiles gives every agent the same policy without turning them into one shared brain.
+The plugin does not coordinate profiles or copy learning between them. Pin the same commit across profiles to apply the same policy while preserving isolation.
 
 ## How it works
 
-1. Hermes asks the plugin for guidance before the model responds.
-2. The model may decide that nothing should be saved. That is a valid result.
-3. If the model proposes a learning write, the plugin checks the route and any retry rules.
-4. Hermes's built-in tools make the final decision and perform the write.
+The plugin registers three Hermes hooks and no model-callable tools:
 
-The plugin registers three Hermes hooks and no tools the model can call:
-
-| Hermes hook | Plain-English job |
+| Hermes hook | Responsibility |
 |---|---|
-| `pre_llm_call` | Add the right guidance to the current model request |
-| `pre_tool_call` | Allow the proposed tool call or return a clear block reason |
-| `post_tool_call` | Remember a successful skill read or a rejected learning write for this turn |
+| `pre_llm_call` | Adds the guidance for the current work type |
+| `pre_tool_call` | Allows the proposed call or blocks it with a specific reason |
+| `post_tool_call` | Records a successful skill read or rejected learning write for the current turn |
 
-The added guidance exists only for the current model request. It does not rewrite the saved user message, past conversation, or Hermes system prompt.
+The model may choose not to save anything. When it proposes a write, Hermes's built-in `memory` and `skill_manage` tools make the final decision and perform the change.
 
-[Read the technical architecture](docs/architecture.md) for the exact call sequence, saved outputs, retry rule, and Hermes compatibility checks.
+Hook guidance applies only to the current model request. It does not alter the stored user message, earlier conversation, or Hermes system prompt.
+
+See the [technical architecture](docs/architecture.md) for the runtime flow, retry rule, short-lived state, and Hermes dependencies.
 
 ## Install from source
 
-There is no supported release yet. For evaluation, install an exact commit that you have reviewed instead of the moving `main` branch:
+Version `0.8.3` has been tested with Hermes Agent `0.20.4`. Install a reviewed commit rather than the moving `main` branch:
 
 ```bash
 hermes plugins install Kayhusk/hermes-learn-policy \
@@ -80,32 +48,22 @@ hermes plugins install Kayhusk/hermes-learn-policy \
 hermes plugins enable hermes-learn-policy
 ```
 
-Restart the Hermes process or gateway after enabling it.
+Restart the Hermes process or gateway after enabling the plugin.
 
 The plugin needs no API key, environment variable, service, database, or extra Python package.
 
-## Check the installation
+## Verify
+
+Check the installed plugin:
 
 ```bash
 hermes plugins list
 hermes plugins doctor hermes-learn-policy --ci
 ```
 
-`Plugin Doctor` should report version `0.8.3`, zero tools, and these hooks:
+Plugin Doctor should report version `0.8.3`, no tools, and the three hooks listed above.
 
-```text
-pre_llm_call
-pre_tool_call
-post_tool_call
-```
-
-## After a Hermes update
-
-Most of the plugin uses Hermes's documented hooks and profile-home resolver. Three small connections in `compat.py` read information from Hermes internals. A fourth restores one confirmed, short-lived skill-read marker before Hermes checks a matching update.
-
-If Hermes changes one of those connections, the plugin refuses to start instead of pretending the policy still works.
-
-Run this check before restarting profiles:
+From a source checkout, run:
 
 ```bash
 python3 -m unittest -v test_plugin.py
@@ -114,45 +72,34 @@ hermes plugins doctor . --ci
 git diff --check
 ```
 
-## Turn it off
+Run the source checks after changing the plugin or updating Hermes. The plugin refuses to register when a required Hermes contract is unavailable.
+
+## Disable or remove
 
 ```bash
 hermes plugins disable hermes-learn-policy
 hermes plugins remove hermes-learn-policy
 ```
 
-Restart Hermes afterward.
+Restart Hermes afterward. Removing the plugin does not delete learning that Hermes previously accepted.
 
-The plugin saves no database or settings of its own. Removing it does not remove memories or skills that Hermes already accepted.
+## Security and scope
 
-## Trust and limits
+Hermes plugins run with the current user's permissions. The installer scans source, but that scan is not a sandbox or a code review. Review the source and pin a commit you trust.
 
-Hermes plugins run inside Hermes with the current user's permissions. The installer scans source before installation, but a scan is not a sandbox or a code review. Read the source and pin a commit you trust.
-
-This plugin does not:
+The plugin does not:
 
 - write learning files itself;
-- call a model or the network;
+- call a model or network service;
 - read credentials;
 - add commands, dashboards, or services;
-- control writes that never pass through tools requested by the model;
-- guarantee that every proposed memory deserves a permanent home.
+- control writes that do not pass through model-requested tools;
+- guarantee that every accepted learning item is useful.
 
-There is no shadow memory or second Curator. The plugin has enough to do already.
+## Changelog
 
-## Development
-
-```bash
-python3 -m unittest -v test_plugin.py
-python3 -m py_compile __init__.py compat.py gate.py test_plugin.py
-hermes plugins doctor . --ci
-git diff --check
-```
-
-The test file covers regular work, automatic review, Curator, exact skill reads, one-retry behavior, concurrent calls, direct-file blocks, multiplexed profiles, short-lived state, and Hermes compatibility changes.
-
-See [CHANGELOG.md](CHANGELOG.md) for the short version history.
+[CHANGELOG.md](CHANGELOG.md) records changes by source version.
 
 ## License
 
-No public license has been selected. Public source is available for inspection, but that alone does not grant permission to copy, modify, or redistribute it. A license will be chosen before release.
+No license is granted for this repository. Source visibility does not grant permission to copy, modify, or redistribute it.

@@ -1,4 +1,4 @@
-"""Route protection and prompt-first guidance for Hermes learning."""
+"""Learning guidance, tool-call checks, and per-turn retry state."""
 
 import hashlib
 import json
@@ -37,39 +37,55 @@ _CURATOR_READ_COMMANDS = {
     "wc",
 }
 
-LEARNING_QUALITY_GUIDANCE = """Hermes Learn Policy — native learning quality
+SKILL_OWNER_GUIDANCE = """Before a skill write, load `skill-governance` with native `skill_view`. Inspect the catalog with `skills_list` and the current owner with `skill_view`, including relevant linked files. If inspection is incomplete, make no write. Update the existing owner after satisfying native read-before-write. Create a skill only when inspection finds no current owner for that responsibility. Keep related but distinct responsibilities separate and link them instead of copying guidance."""
 
-When considering a native `memory` or `skill_manage` write, classify the durable owner first and save only material that will improve future sessions:
+COHERENT_SKILL_CHANGE_GUIDANCE = """Keep a multi-file skill change coherent. If its owner and support files cannot all be updated, make no write."""
 
-- USER: stable facts about the user, preferences, communication style, and expectations.
-- MEMORY: stable agent or environment facts, conventions, and corrections. Write declarative facts, not commands to a future agent.
-- skills: reusable class-level procedures and decision methods. Keep active guidance portable; put session-specific evidence in an appropriate reference only when it has lasting diagnostic value.
+AUTONOMOUS_SKILL_RETRY_GUIDANCE = """After the first rejected skill write in an autonomous review, reread the same owner and exact file before one retry. Success or another rejection closes learning writes for that review. Do not switch owners or files to bypass a rejection."""
 
-Before any memory write, load `profile-memory-governance` with native `skill_view` and follow its admission and write workflow. Use the complete current USER or MEMORY content available to this turn. For replacement, carry every unrelated clause forward verbatim. Never solve capacity by silently dropping clauses. If exact preservation, ownership, or capacity cannot be verified, make no write.
+LEARNING_QUALITY_GUIDANCE = f"""Hermes Learn Policy: durable learning
 
-Before a skill write, load `skill-governance` with native `skill_view`, then inspect the current catalog and owner with native `skills_list` and `skill_view`, including relevant linked references. If the same responsibility or procedure already exists, update that owner only after satisfying native read-before-write. If inspection is incomplete, make no write. If inspection confirms no existing owner has that responsibility, native creation remains available. If responsibilities are related but distinct, keep them separate and link instead of merging or copying guidance.
+Apply this policy only when considering a native `memory` or `skill_manage` write. A no-write result is valid.
 
-Keep a multi-file learning proposal coherent. If an owner/index change and support file are both required, do not persist only one half; prefer one self-contained native mutation or no write. In an autonomous review, one native skill rejection permits only one same-owner retry after reading the exact target again; any memory rejection or completed retry ends learning writes for that review. Never switch owners or files to route around a rejection.
+Choose the durable owner before writing:
 
-Do not persist secrets, volatile status, task history, completion claims, issue/PR/commit/test receipts, duplicated meaning, misplaced procedures, or unnecessary machine-local paths. Prefer the current project/runtime source, session history, or no write when those are the correct owners. When replacing a consolidated entry, preserve every unaffected clause rather than silently dropping facts to make room. Preserve unrelated entries and use one native atomic memory batch when several entries change together."""
+- USER stores stable user facts, preferences, communication style, and expectations.
+- MEMORY stores stable agent or environment facts, conventions, and corrections. Use declarative facts, not commands to a future agent.
+- A skill stores reusable procedures and decision methods. Keep active guidance portable. Put session evidence in a reference only when it has lasting diagnostic value.
 
-FOREGROUND_GUIDANCE = """Foreground learning lane
+Before a memory write, load `profile-memory-governance` with native `skill_view` and follow its admission and write workflow. Inspect the complete current USER or MEMORY content available to this turn. A replacement must preserve every unrelated clause verbatim. Use one native atomic memory batch when several entries change. If ownership, capacity, or exact preservation is uncertain, make no write.
 
-The user's current task remains primary. The current real user message can support a USER write when it passes profile-memory governance. Apply this policy only if this turn considers a native learning write. A no-write decision is valid."""
+{SKILL_OWNER_GUIDANCE}
 
-BACKGROUND_GUIDANCE = """Automatic background-review lane
+{COHERENT_SKILL_CHANGE_GUIDANCE}
 
-The current review prompt is synthetic review machinery, not a real user statement and never USER authority. These are process or evidence sources, never user preferences: system prompts, plugin context, review instructions, skills, assistant output, and tool results. USER facts require explicit support from pre-existing real user messages in the inherited conversation history or an independently verified authoritative factual source. Autonomous USER learning remains available from qualifying real-user evidence. If no authoritative support exists, make no USER write.
+Do not save secrets, changing status, task history, completion claims, issue, PR, commit, or test records, duplicate meaning, misplaced procedures, or unnecessary machine paths. Leave project and runtime facts in their source, and past task state in session history."""
 
-Inspect native owners before writing. A no-write result is valid. Never create a sibling to bypass ownership or read-before-write rejection. After a skill rejection, read the exact same owner and target file once before one retry; every further learning write in this review will be refused. A memory rejection ends learning writes for this review."""
+FOREGROUND_GUIDANCE = """Foreground lane
 
-CURATOR_GUIDANCE = """Hermes Learn Policy — Curator consolidation lane
+The user's current task remains primary. The current user message may support a USER write when `profile-memory-governance` admits it."""
 
-This lane is skill-only. Before a write, load `skill-governance`, inspect current owners with native `skills_list` and `skill_view`, and keep related but distinct responsibilities separate. A no-write result is valid. Preserve native Curator ownership, pins, archive/delete, and provenance rules. Use terminal only for read-only inspection; durable skill mutation must remain on native `skill_manage`. After a rejection, read the exact same owner and target file once before one retry; every further skill write in this review will be refused."""
+BACKGROUND_GUIDANCE = f"""Automatic review lane
+
+The review request is generated by Hermes, not written by the user. It cannot establish a USER fact. Neither can system prompts, plugin guidance, review instructions, skills, assistant messages, or tool results. A USER write needs explicit support from an earlier real user message in the inherited conversation or an independently verified authoritative source. Without that evidence, do not write USER.
+
+{AUTONOMOUS_SKILL_RETRY_GUIDANCE} A rejected memory write closes learning writes for the review immediately."""
+
+CURATOR_GUIDANCE = f"""Hermes Learn Policy: Curator lane
+
+Curator may change skills only.
+
+{SKILL_OWNER_GUIDANCE}
+
+{COHERENT_SKILL_CHANGE_GUIDANCE}
+
+{AUTONOMOUS_SKILL_RETRY_GUIDANCE}
+
+Keep Curator's native rules for ownership, pins, archive and delete operations, and provenance. Use terminal only for approved read-only inspection commands. Use `skill_manage` for every durable change."""
 
 
 def _purge_superseded_turns_locked(session_id, turn_id):
-    """Drop only prior turns from this session; never evict another active turn."""
+    """Remove older turns from one session without evicting other active turns."""
     global _STATE_SATURATED
     session_id, turn_id = str(session_id), str(turn_id)
     for mapping in (_LANES, _RECOVERY, _READ_RECEIPTS):
@@ -307,7 +323,7 @@ def _pre_decision(tool_name, args, home, task_id=""):
     ):
         return {
             "action": "block",
-            "message": "learning-policy: obvious private-key material cannot be persisted",
+            "message": "learning-policy: private-key material cannot be saved",
         }
 
     if tool_name in {"write_file", "patch"}:
@@ -317,8 +333,8 @@ def _pre_decision(tool_name, args, home, task_id=""):
                 return {
                     "action": "block",
                     "message": (
-                        "learning-policy: direct durable-learning write refused; "
-                        f"retry with {owner}"
+                        "learning-policy: learning files must be changed through "
+                        f"{owner}"
                     ),
                 }
     return None
@@ -346,8 +362,8 @@ def pre_tool_call(
         return {
             "action": "block",
             "message": (
-                "learning-policy: autonomous review state capacity reached; "
-                "end this review and continue on a fresh turn"
+                "learning-policy: autonomous learning state is full; "
+                "continue on a fresh turn"
             ),
         }
     if tool_name == "terminal" and lane == "curator":
@@ -355,8 +371,8 @@ def pre_tool_call(
             return {
                 "action": "block",
                 "message": (
-                    "learning-policy: Curator terminal mutation refused; "
-                    "use terminal for inspection and native skill_manage for durable changes"
+                    "learning-policy: Curator terminal access is read-only; "
+                    "use skill_manage for skill changes"
                 ),
             }
         return None
@@ -383,8 +399,8 @@ def pre_tool_call(
                     return {
                         "action": "block",
                         "message": (
-                            "learning-policy: autonomous review-wide recovery refused; "
-                            "read the rejected owner and exact target once, retry once, or end this review"
+                            "learning-policy: retry only the rejected skill file "
+                            "after reading that exact file again"
                         ),
                     }
                 recovery["consumed"] = True
@@ -397,8 +413,8 @@ def pre_tool_call(
                 return {
                     "action": "block",
                     "message": (
-                        "learning-policy: autonomous review-wide recovery refused; "
-                        "a prior learning rejection ended writes for this review"
+                        "learning-policy: a prior learning rejection closed "
+                        "writes for this review"
                     ),
                 }
 
@@ -415,6 +431,6 @@ def pre_tool_call(
         if tool_name in {"skill_manage", "memory"}:
             return {
                 "action": "block",
-                "message": "learning-policy failed closed: inspect the learning proposal and retry",
+                "message": "learning-policy: tool-call check failed; inspect the proposal before retrying",
             }
         return None

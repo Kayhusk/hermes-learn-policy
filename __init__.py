@@ -1,4 +1,4 @@
-"""Hermes Learn Policy plugin."""
+"""Register the Hermes Learn Policy hooks."""
 
 from .compat import ensure_compatible
 from .gate import post_tool_call, pre_llm_call, pre_tool_call

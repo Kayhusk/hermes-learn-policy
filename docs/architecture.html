@@ -6,212 +6,319 @@
   <title>Hermes Learn Policy architecture</title>
   <style>
     :root {
-      color-scheme: dark;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      background: #020617;
-      color: #e2e8f0;
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-muted: #f5f5f6;
+      --border: rgba(17, 18, 22, 0.10);
+      --border-strong: rgba(17, 18, 22, 0.22);
+      --text: #0c0d10;
+      --text-muted: #55596a;
+      --text-soft: #8d93a1;
+      --accent: #111216;
+      --good: #16855b;
+      --warn: #a96600;
+      --radius: 14px;
+      --shadow: 0 1px 2px rgba(17, 18, 22, 0.04), 0 8px 24px rgba(17, 18, 22, 0.06);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
     }
+
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 30px; background: #020617; }
-    main { width: 1480px; margin: 0 auto; }
-    header { display: flex; align-items: center; gap: 12px; margin: 0 0 18px 4px; }
-    .pulse { width: 10px; height: 10px; border-radius: 50%; background: #34d399; box-shadow: 0 0 18px #34d399; }
-    h1 { margin: 0; font-size: 24px; letter-spacing: -0.03em; }
-    header p { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
-    .diagram { border: 1px solid #1e293b; border-radius: 14px; overflow: hidden; background: #020617; }
-    svg { display: block; width: 100%; height: auto; }
-    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px; }
-    .card { border: 1px solid #1e293b; border-radius: 10px; background: #0f172a; padding: 16px 18px; min-height: 118px; }
-    .card h2 { margin: 0 0 10px; font-size: 13px; }
-    .card p { margin: 5px 0; color: #cbd5e1; font-size: 11px; line-height: 1.55; }
-    footer { margin: 14px 4px 0; color: #64748b; font-size: 10px; }
+
+    html, body { margin: 0; min-width: 1440px; background: var(--bg); }
+
+    body {
+      padding: 52px 64px 40px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main { width: 1312px; margin: 0 auto; }
+
+    .kicker {
+      margin: 0 0 10px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 52px;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .lede {
+      max-width: 900px;
+      margin: 16px 0 0;
+      color: var(--text-muted);
+      font-size: 18px;
+      line-height: 1.5;
+    }
+
+    .diagram {
+      display: grid;
+      gap: 22px;
+      margin-top: 36px;
+    }
+
+    .tier {
+      display: grid;
+      grid-template-columns: 138px 1fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .tier-name {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      border-radius: var(--radius);
+      background: var(--surface-muted);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
+      line-height: 1.4;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .cells {
+      display: grid;
+      gap: 30px;
+      align-items: stretch;
+    }
+
+    .write-path { grid-template-columns: repeat(6, 1fr); }
+    .read-path { grid-template-columns: repeat(4, 1fr); }
+    .contracts { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+    .cell {
+      position: relative;
+      min-height: 122px;
+      padding: 18px 16px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .write-path .cell { border-top: 3px solid var(--accent); }
+    .read-path .cell { border-top: 3px solid var(--good); }
+    .contracts .cell { min-height: 108px; background: var(--surface-muted); box-shadow: none; }
+
+    .step {
+      display: inline-flex;
+      width: 26px;
+      height: 26px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      border-radius: 999px;
+      background: var(--surface-muted);
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .read-path .step { color: var(--good); }
+
+    .cell h2 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+    }
+
+    .cell p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.93em;
+    }
+
+    .flow .cell:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: calc(100% + 1px);
+      width: 29px;
+      height: 1px;
+      background: var(--border-strong);
+    }
+
+    .flow .cell:not(:last-child)::before {
+      content: "";
+      position: absolute;
+      z-index: 2;
+      top: calc(50% - 4px);
+      left: calc(100% + 24px);
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 6px solid var(--text-soft);
+    }
+
+    .note {
+      grid-column: 2;
+      margin: -8px 0 0;
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .legend {
+      display: flex;
+      gap: 28px;
+      margin: 28px 0 0 160px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 8px; }
+    .legend b { color: var(--text); font-weight: 650; }
+
+    .line {
+      display: inline-block;
+      width: 24px;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    .line.green { background: var(--good); }
+    .swatch {
+      display: inline-block;
+      width: 18px;
+      height: 14px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-muted);
+    }
+
+    footer {
+      margin: 24px 0 0 160px;
+      color: var(--text-soft);
+      font-size: 10px;
+      letter-spacing: 0.02em;
+    }
   </style>
 </head>
 <body>
 <main>
   <header>
-    <div class="pulse" aria-hidden="true"></div>
-    <div>
-      <h1>Hermes Learn Policy</h1>
-      <p>One profile shown: added guidance, built-in writers, one retry, and saved results</p>
-    </div>
+    <p class="kicker">Runtime architecture | One Hermes profile</p>
+    <h1>Hermes-native learning with policy checks</h1>
+    <p class="lede">The plugin supplies learning guidance and checks proposed tool calls. Hermes reads, validates, and writes every durable learning file.</p>
   </header>
 
-  <div class="diagram">
-    <svg viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
-      <title id="title">Hermes Learn Policy technical architecture</title>
-      <desc id="desc">Three types of Hermes work pass through a pre-LLM hook. The plugin guides and checks tool calls while Hermes alone saves USER, MEMORY, and skill files.</desc>
-      <defs>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-        </pattern>
-        <marker id="arrow-cyan" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="#22d3ee"/>
-        </marker>
-        <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="#34d399"/>
-        </marker>
-        <marker id="arrow-slate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/>
-        </marker>
-        <marker id="arrow-violet" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="#a78bfa"/>
-        </marker>
-        <marker id="arrow-rose" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="#fb7185"/>
-        </marker>
-      </defs>
+  <section class="diagram" aria-label="Hermes Learn Policy runtime flow">
+    <div class="tier">
+      <div class="tier-name">Write path</div>
+      <div class="cells write-path flow">
+        <article class="cell">
+          <span class="step">01</span>
+          <h2>Work lane</h2>
+          <p>Foreground, automatic review, or Curator</p>
+        </article>
+        <article class="cell">
+          <span class="step">02</span>
+          <h2><code>pre_llm_call</code></h2>
+          <p>Selects guidance for this model request</p>
+        </article>
+        <article class="cell">
+          <span class="step">03</span>
+          <h2>Model decision</h2>
+          <p>No write, or a native learning tool request</p>
+        </article>
+        <article class="cell">
+          <span class="step">04</span>
+          <h2><code>pre_tool_call</code></h2>
+          <p>Checks the route, content, and retry target</p>
+        </article>
+        <article class="cell">
+          <span class="step">05</span>
+          <h2>Hermes writers</h2>
+          <p><code>memory</code> and <code>skill_manage</code></p>
+        </article>
+        <article class="cell">
+          <span class="step">06</span>
+          <h2>Saved learning</h2>
+          <p>USER, MEMORY, and skill files</p>
+        </article>
+      </div>
+      <p class="note">Direct learning-file edits and disallowed Curator terminal commands stop at step 04. Hermes owns validation, locks, history, and rollback at step 05.</p>
+    </div>
 
-      <rect width="1440" height="900" fill="#020617"/>
-      <rect width="1440" height="900" fill="url(#grid)"/>
+    <div class="tier">
+      <div class="tier-name">Skill read check</div>
+      <div class="cells read-path flow">
+        <article class="cell">
+          <span class="step">A</span>
+          <h2><code>skill_view</code></h2>
+          <p>Reads one exact skill file</p>
+        </article>
+        <article class="cell">
+          <span class="step">B</span>
+          <h2><code>post_tool_call</code></h2>
+          <p>Records the successful result</p>
+        </article>
+        <article class="cell">
+          <span class="step">C</span>
+          <h2>Read receipt</h2>
+          <p>File identity only, held for the turn</p>
+        </article>
+        <article class="cell">
+          <span class="step">D</span>
+          <h2>Matching write</h2>
+          <p>Restores Hermes's native read marker once</p>
+        </article>
+      </div>
+      <p class="note">One rejected autonomous skill write may repeat after a fresh read of the same owner and exact file. A memory rejection closes learning for that review.</p>
+    </div>
 
-      <!-- Connections are drawn first so component boxes mask crossings. -->
-      <g fill="none" stroke-width="2">
-        <path d="M310 165 L360 165 L360 185 L400 185" stroke="#22d3ee" marker-end="url(#arrow-cyan)"/>
-        <path d="M310 245 L370 245 L370 205 L400 205" stroke="#22d3ee" marker-end="url(#arrow-cyan)"/>
-        <path d="M310 325 L380 325 L380 225 L400 225" stroke="#22d3ee" marker-end="url(#arrow-cyan)"/>
-        <path d="M680 200 L780 200" stroke="#22d3ee" marker-end="url(#arrow-cyan)"/>
-        <path d="M915 250 L915 340" stroke="#94a3b8" marker-end="url(#arrow-slate)"/>
-        <path d="M780 385 L680 385" stroke="#94a3b8" marker-end="url(#arrow-slate)"/>
-        <path d="M540 430 L540 490" stroke="#a78bfa" marker-end="url(#arrow-violet)"/>
-        <path d="M540 590 L540 650" stroke="#a78bfa" marker-end="url(#arrow-violet)"/>
-        <path d="M1050 200 L1080 200 L1080 570 L710 570 L710 685 L680 685" stroke="#94a3b8" marker-end="url(#arrow-slate)"/>
-        <path d="M340 705 L400 705" stroke="#fb7185" marker-end="url(#arrow-rose)"/>
-        <path d="M680 705 L780 705" stroke="#34d399" marker-end="url(#arrow-green)"/>
-        <path d="M1050 705 L1120 705" stroke="#34d399" marker-end="url(#arrow-green)"/>
-        <path d="M780 735 C720 735 720 405 680 405" stroke="#34d399" marker-end="url(#arrow-green)"/>
-        <path d="M1120 350 L1090 350 L1090 95 L620 95 L620 150" stroke="#fb7185" stroke-dasharray="6 5" marker-end="url(#arrow-rose)"/>
-        <path d="M1120 470 L1090 470 L1090 610 L720 610 L720 670 L680 670" stroke="#fb7185" stroke-dasharray="6 5" marker-end="url(#arrow-rose)"/>
-      </g>
-
-      <!-- Section labels -->
-      <g font-size="10" font-weight="700" letter-spacing="1.5">
-        <text x="40" y="55" fill="#94a3b8">TYPE OF WORK</text>
-        <text x="400" y="55" fill="#22d3ee">PLUGIN HOOKS</text>
-        <text x="780" y="55" fill="#34d399">HERMES WRITERS</text>
-        <text x="1120" y="55" fill="#a78bfa">RESULTS + HERMES CHECKS</text>
-      </g>
-
-      <!-- Origin boundary -->
-      <rect x="40" y="80" width="300" height="290" rx="12" fill="#0f172a" stroke="#475569" stroke-dasharray="8 5"/>
-      <text x="65" y="110" fill="#94a3b8" font-size="10">Hermes identifies the work type</text>
-
-      <g>
-        <rect x="70" y="130" width="240" height="70" rx="7" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
-        <text x="90" y="158" fill="#e2e8f0" font-size="13" font-weight="700">Foreground</text>
-        <text x="90" y="180" fill="#94a3b8" font-size="9">Current user-directed turn</text>
-
-        <rect x="70" y="210" width="240" height="70" rx="7" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
-        <text x="90" y="238" fill="#e2e8f0" font-size="13" font-weight="700">Background review</text>
-        <text x="90" y="260" fill="#94a3b8" font-size="9">Automatic learning review</text>
-
-        <rect x="70" y="290" width="240" height="60" rx="7" fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
-        <text x="90" y="317" fill="#e2e8f0" font-size="13" font-weight="700">Curator</text>
-        <text x="90" y="338" fill="#94a3b8" font-size="9">Skill-only maintenance lane</text>
-      </g>
-
-      <!-- pre_llm hook -->
-      <rect x="400" y="150" width="280" height="100" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.8"/>
-      <text x="425" y="180" fill="#22d3ee" font-size="12" font-weight="700">pre_llm_call</text>
-      <text x="425" y="205" fill="#e2e8f0" font-size="10">Choose the right learning rules</text>
-      <text x="425" y="225" fill="#94a3b8" font-size="9">Add guidance to this model request only</text>
-
-      <!-- model -->
-      <rect x="780" y="150" width="270" height="100" rx="8" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
-      <text x="805" y="180" fill="#e2e8f0" font-size="12" font-weight="700">Model decision</text>
-      <text x="805" y="205" fill="#94a3b8" font-size="9">User message + added learning guidance</text>
-      <text x="805" y="225" fill="#94a3b8" font-size="9">May propose no write or a native tool call</text>
-
-      <!-- post hook -->
-      <rect x="400" y="340" width="280" height="90" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.8"/>
-      <text x="425" y="370" fill="#22d3ee" font-size="12" font-weight="700">post_tool_call</text>
-      <text x="425" y="395" fill="#e2e8f0" font-size="10">Read the result after Hermes finishes</text>
-      <text x="425" y="413" fill="#94a3b8" font-size="9">The returned result stays untouched</text>
-
-      <!-- skill view -->
-      <rect x="780" y="340" width="270" height="90" rx="8" fill="#0f172a" stroke="#34d399" stroke-width="1.8"/>
-      <text x="805" y="370" fill="#34d399" font-size="12" font-weight="700">Hermes skill_view</text>
-      <text x="805" y="395" fill="#e2e8f0" font-size="10">Read the requested skill file</text>
-      <text x="805" y="413" fill="#94a3b8" font-size="9">Hermes returns the exact file it read</text>
-
-      <!-- state -->
-      <rect x="400" y="490" width="280" height="100" rx="8" fill="#0f172a" stroke="#a78bfa" stroke-width="1.8"/>
-      <text x="425" y="520" fill="#a78bfa" font-size="12" font-weight="700">Short-lived process state</text>
-      <text x="425" y="545" fill="#e2e8f0" font-size="10">Work type, exact file read, retry state</text>
-      <text x="425" y="565" fill="#94a3b8" font-size="9">File identity only, no memory or skill text</text>
-
-      <!-- compatibility -->
-      <rect x="1120" y="300" width="280" height="230" rx="12" fill="#0f172a" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="7 5"/>
-      <text x="1145" y="335" fill="#fb7185" font-size="12" font-weight="700">Hermes compatibility checks</text>
-      <text x="1145" y="365" fill="#e2e8f0" font-size="10">Regular work or automatic review</text>
-      <text x="1145" y="390" fill="#e2e8f0" font-size="10">Files a write would change</text>
-      <text x="1145" y="415" fill="#e2e8f0" font-size="10">Exact path for relative filenames</text>
-      <text x="1145" y="440" fill="#e2e8f0" font-size="10">Hermes skill-read marker</text>
-      <text x="1145" y="475" fill="#94a3b8" font-size="9">No hidden writer is imported</text>
-      <text x="1145" y="495" fill="#94a3b8" font-size="9">A missing connection stops the plugin</text>
-
-      <!-- direct route -->
-      <rect x="50" y="650" width="290" height="110" rx="8" fill="#0f172a" stroke="#fb7185" stroke-width="1.8"/>
-      <text x="75" y="683" fill="#fb7185" font-size="12" font-weight="700">Other tool requests</text>
-      <text x="75" y="710" fill="#e2e8f0" font-size="10">write_file / patch to learning files</text>
-      <text x="75" y="732" fill="#e2e8f0" font-size="10">Curator terminal commands</text>
-
-      <!-- pre tool hook -->
-      <rect x="400" y="650" width="280" height="110" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.8"/>
-      <text x="425" y="682" fill="#22d3ee" font-size="12" font-weight="700">pre_tool_call</text>
-      <text x="425" y="708" fill="#e2e8f0" font-size="10">Check target; consume one matching retry</text>
-      <text x="425" y="730" fill="#94a3b8" font-size="9">Allow, restore Hermes's read marker, or block</text>
-
-      <!-- native writers -->
-      <rect x="780" y="650" width="270" height="110" rx="8" fill="#0f172a" stroke="#34d399" stroke-width="1.8"/>
-      <text x="805" y="682" fill="#34d399" font-size="12" font-weight="700">Hermes memory + skill_manage</text>
-      <text x="805" y="708" fill="#e2e8f0" font-size="10">Check, lock, write, and record the change</text>
-      <text x="805" y="730" fill="#94a3b8" font-size="9">Only Hermes saves learning files</text>
-
-      <!-- durable output -->
-      <rect x="1120" y="600" width="280" height="210" rx="12" fill="#0f172a" stroke="#a78bfa" stroke-width="1.8"/>
-      <text x="1145" y="635" fill="#a78bfa" font-size="12" font-weight="700">What changes</text>
-      <text x="1145" y="670" fill="#22d3ee" font-size="10">Short-lived</text>
-      <text x="1165" y="693" fill="#e2e8f0" font-size="10">Guidance for this model request</text>
-      <text x="1165" y="715" fill="#e2e8f0" font-size="10">Allow or clear block reason</text>
-      <text x="1145" y="750" fill="#34d399" font-size="10">Saved by Hermes</text>
-      <text x="1165" y="773" fill="#e2e8f0" font-size="10">USER.md / MEMORY.md</text>
-      <text x="1165" y="795" fill="#e2e8f0" font-size="10">Skill packages + references</text>
-
-      <!-- Legend -->
-      <g transform="translate(45 845)" font-size="9">
-        <line x1="0" y1="0" x2="32" y2="0" stroke="#22d3ee" stroke-width="2"/><text x="42" y="4" fill="#94a3b8">plugin guidance and checks</text>
-        <line x1="230" y1="0" x2="262" y2="0" stroke="#34d399" stroke-width="2"/><text x="272" y="4" fill="#94a3b8">Hermes reads and writes</text>
-        <line x1="455" y1="0" x2="487" y2="0" stroke="#a78bfa" stroke-width="2"/><text x="497" y="4" fill="#94a3b8">short-lived and saved results</text>
-        <line x1="700" y1="0" x2="732" y2="0" stroke="#fb7185" stroke-width="2" stroke-dasharray="6 5"/><text x="742" y="4" fill="#94a3b8">Hermes compatibility checks</text>
-      </g>
-    </svg>
-  </div>
-
-  <section class="cards" aria-label="Architecture summary">
-    <article class="card">
-      <h2 style="color:#22d3ee">Added guidance</h2>
-      <p>`pre_llm_call` adds rules to the current model request.</p>
-      <p>The saved message, history, and system prompt stay unchanged.</p>
-    </article>
-    <article class="card">
-      <h2 style="color:#34d399">Saved writes</h2>
-      <p>Hermes `memory` and `skill_manage` save every lasting change.</p>
-      <p>The plugin adds no writer, database, service, or tool the model can call.</p>
-    </article>
-    <article class="card">
-      <h2 style="color:#fb7185">When unsure</h2>
-      <p>If Hermes changes and a required connection is missing, the plugin stops.</p>
-      <p>Invalid retries or full state stop automatic learning.</p>
-    </article>
-    <article class="card">
-      <h2 style="color:#a78bfa">Many agents</h2>
-      <p>Install the same pinned commit in each Hermes profile.</p>
-      <p>Every profile keeps its plugin state and learning files separate.</p>
-    </article>
+    <div class="tier">
+      <div class="tier-name">Hermes contracts</div>
+      <div class="cells contracts">
+        <article class="cell">
+          <h2>Write origin</h2>
+          <p>Foreground or automatic review</p>
+        </article>
+        <article class="cell">
+          <h2>Mutation targets</h2>
+          <p>Files the tool call would change</p>
+        </article>
+        <article class="cell">
+          <h2>Path resolution</h2>
+          <p>The exact native file target</p>
+        </article>
+        <article class="cell">
+          <h2>Read marker</h2>
+          <p>Confirmed skill read in this tool context</p>
+        </article>
+      </div>
+      <p class="note">The plugin checks these contracts before registration. A missing contract stops the plugin.</p>
+    </div>
   </section>
 
-  <footer>Hermes Learn Policy v0.8.3 | One profile shown; repeat the same isolated boundary per agent profile</footer>
+  <aside class="legend" aria-label="Diagram legend">
+    <span><i class="line"></i><b>Black</b> primary write path</span>
+    <span><i class="line green"></i><b>Green</b> skill-read verification</span>
+    <span><i class="swatch"></i><b>Gray</b> required Hermes contract</span>
+  </aside>
+
+  <footer>Hermes Learn Policy 0.8.3 | Scope: one isolated Hermes profile</footer>
 </main>
 </body>
 </html>
