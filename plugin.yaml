@@ -1,6 +1,6 @@
 name: hermes-learn-policy
-version: "0.8.2"
-description: Dynamic native learning policy and route protection.
+version: "0.8.3"
+description: Help Hermes agents save cleaner USER, MEMORY, and skill learning while Hermes controls every learning write.
 provides_hooks:
   - pre_llm_call
   - pre_tool_call

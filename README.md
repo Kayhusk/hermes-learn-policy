@@ -1,177 +1,111 @@
 # Hermes Learn Policy
 
-Standalone Hermes plugin that dynamically guides native learning writers, bridges one verified native skill read across tool-worker contexts, and bounds autonomous rejection recovery without replacing Hermes's mutation system.
+> Hermes can learn. It can also get a little too enthusiastic.
 
-## Responsibility boundary
+Hermes Learn Policy helps Hermes agents save useful memories and skills without creating a second learning system behind the scenes.
 
-**Native Hermes owns** `memory` and `skill_manage`, target resolution, validation, capacity, locking, atomic writes, staging, ownership, provenance, rollback, pinning, archive/delete, and lifecycle.
+It gives the model clear rules before it considers a learning write. It also blocks a small set of routes that should never bypass Hermes's built-in `memory` and `skill_manage` tools.
 
-**This plugin owns only:**
+One agent or a small fleet. Same rules, separate notebooks.
 
-- lane-specific guidance immediately before each LLM decision;
-- deterministic protection against direct learning-file writes and obvious private keys;
-- a bounded ephemeral receipt for successful native `skill_view` results;
-- replay of that receipt into Hermes's existing background-review read marker;
-- one review-wide autonomous recovery budget;
-- a strict read-only terminal allowlist for Curator.
+![Hermes Learn Policy architecture](docs/architecture.png)
 
-It has no model tool, writer, database, service, daemon, alternate memory store, linter, rollback engine, or second Curator. One version-scoped native file resolver is reused so direct-route checks match Hermes's actual task CWD.
+## Current status
 
-## Version 0.8.2
+The source is public, but the plugin is not released.
 
-v0.8.2 preserves the three public hooks introduced in v0.8.0:
+- Current source version: `0.8.3`
+- No GitHub Release or version tag
+- No Hermes community listing
+- No npm or PyPI package
+- No public license yet
 
-- `pre_llm_call`
-- `pre_tool_call`
-- `post_tool_call`
+Version 0.8.3 passed its compatibility checks with Hermes Agent `0.20.4`. Check it again after updating Hermes before using it in a long-running profile.
 
-It adds no dependency and modifies no Hermes core file.
+## What it does
 
-## Runtime flow
+- Adds short learning guidance before each model turn.
+- Uses different guidance for regular work, automatic learning review, and Curator maintenance.
+- Keeps USER facts tied to real user statements or another trusted source.
+- Confirms that the exact skill file was read before a matching background update.
+- Gives a rejected background skill write one honest retry, not a new filename and another lap.
+- Blocks direct edits to USER, MEMORY, and skill files when the model should use Hermes's built-in tools.
+- Blocks obvious private-key text from saved learning.
+- Keeps Curator shell access read-only.
 
-```text
-foreground / background review / Curator
-        |
-        v
-pre_llm_call
-  -> record lane by session + turn
-  -> append lane-specific policy to the API-bound user message
-        |
-        v
-native model decision
-        |
-        +---- skill_view ----------------------------------+
-        |                                                   |
-        |                                            post_tool_call
-        |                                      validate native success
-        |                                      record exact path receipt
-        |                                                   |
-        +---- skill_manage / memory                         |
-        |                                                   |
-        v                                                   |
-pre_tool_call <---------------------------------------------+
-  -> enforce autonomous recovery budget
-  -> replay exact receipt into native background read mark
-  -> apply deterministic route/secret protection
-        |
-        v
-native memory / skill_manage
-        |
-        v
-post_tool_call
-  -> observe native success or rejection
-  -> never rewrite the native result
+Hermes still checks, locks, writes, tracks, and rolls back every saved change.
+
+## One agent or many
+
+Install the plugin separately in every Hermes profile that should use it.
+
+Each running profile keeps its own:
+
+- learning guidance;
+- short-lived read and retry records;
+- USER, MEMORY, and skill files.
+
+Profiles do not share plugin state. The plugin does not coordinate agents, copy memories between them, or read another profile's learning files.
+
+Pinning the same commit across profiles gives every agent the same policy without turning them into one shared brain.
+
+## How it works
+
+1. Hermes asks the plugin for guidance before the model responds.
+2. The model may decide that nothing should be saved. That is a valid result.
+3. If the model proposes a learning write, the plugin checks the route and any retry rules.
+4. Hermes's built-in tools make the final decision and perform the write.
+
+The plugin registers three Hermes hooks and no tools the model can call:
+
+| Hermes hook | Plain-English job |
+|---|---|
+| `pre_llm_call` | Add the right guidance to the current model request |
+| `pre_tool_call` | Allow the proposed tool call or return a clear block reason |
+| `post_tool_call` | Remember a successful skill read or a rejected learning write for this turn |
+
+The added guidance exists only for the current model request. It does not rewrite the saved user message, past conversation, or Hermes system prompt.
+
+[Read the technical architecture](docs/architecture.md) for the exact call sequence, saved outputs, retry rule, and Hermes compatibility checks.
+
+## Install from source
+
+There is no supported release yet. For evaluation, install an exact commit that you have reviewed instead of the moving `main` branch:
+
+```bash
+hermes plugins install Kayhusk/hermes-learn-policy \
+  --ref <40-character-commit-sha> \
+  --no-enable
+
+hermes plugins enable hermes-learn-policy
 ```
 
-`pre_llm_call` context is dynamic and API-only. It does not modify the cached system prompt or past conversation.
+Restart the Hermes process or gateway after enabling it.
 
-## Lane policy
+The plugin needs no API key, environment variable, service, database, or extra Python package.
 
-### Foreground
+## Check the installation
 
-Foreground guidance is conditional. The user's task remains primary, the current real user message remains eligible evidence for USER learning, no write is valid, and foreground user-directed learning retains the complete native tool capability. Autonomous recovery throttling does not apply.
+```bash
+hermes plugins list
+hermes plugins doctor hermes-learn-policy --ci
+```
 
-### Automatic background review
+`Plugin Doctor` should report version `0.8.3`, zero tools, and these hooks:
 
-The reviewer must classify USER, MEMORY, and skill ownership, load the two governance owners, inspect the catalogue and target, preserve unrelated USER/MEMORY clauses, and accept no write as a valid outcome.
+```text
+pre_llm_call
+pre_tool_call
+post_tool_call
+```
 
-The current autonomous review prompt is synthetic machinery, not a real user statement. System prompts, plugin context, review instructions, skills, assistant output, and tool results may guide process or supply bounded evidence, but they do not become user preferences. USER writes require explicit support from pre-existing real user messages in the inherited history or an independently verified authoritative factual source. Legitimate autonomous USER learning remains available.
+## After a Hermes update
 
-After a skill rejection, only one same-owner retry is possible, and only after reading the exact target file again. A memory rejection ends learning writes for that review.
+Most of the plugin uses Hermes's documented hooks and profile-home resolver. Three small connections in `compat.py` read information from Hermes internals. A fourth restores one confirmed, short-lived skill-read marker before Hermes checks a matching update.
 
-### Curator
+If Hermes changes one of those connections, the plugin refuses to start instead of pretending the policy still works.
 
-Curator receives a separate skill-only policy. It preserves native Curator ownership, pins, provenance, and archive/delete behavior. Terminal remains available through a small standard-library read-only allowlist. Git is excluded entirely because repository configuration can execute external programs even for commands such as `git status`.
-
-## Native read bridge
-
-Installed Hermes records background `skill_view` reads in a `ContextVar`. Separate tool-worker contexts can lose that mark before the following `skill_manage` call.
-
-v0.8.2 retains the smallest no-core bridge:
-
-1. `post_tool_call` accepts a receipt only when the native `skill_view` result is a successful mapping whose name and requested supporting file match the call.
-2. The native result's canonical absolute path is retained only in bounded in-process state for that session and turn.
-3. `pre_tool_call(skill_manage)` selects only the receipt matching the same hashed skill identity and exact hashed target file.
-4. The plugin calls Hermes's existing `mark_background_review_skill_read(Path)` function in the current tool context.
-5. Native `skill_manage` performs every subsequent ownership, provenance, validation, read-before-write, and mutation decision.
-
-Failed, malformed, mismatched, relative-path, unrelated-owner, and unrelated-file results create no usable receipt. The bridge imports no private writer, linter, lifecycle function, or fuzzy-patch implementation.
-
-## Review-wide recovery
-
-Recovery applies only to automatic background review and Curator.
-
-- The first native skill rejection records the rejected tool, hashed skill owner, hashed exact target file, and current read generation.
-- Changed arguments, another target file, a sibling skill, or a memory write cannot bypass that rejection.
-- A successful same-owner exact-target `skill_view` after rejection arms one retry.
-- Admission is consumed atomically before native execution, so concurrent duplicate calls yield exactly one allow.
-- Retry success or failure closes learning writes for the rest of that review.
-- A memory rejection closes learning writes immediately.
-- Read-only diagnosis remains available.
-- A new turn receives a fresh budget.
-
-The first native result is never transformed or hidden. Plugin refusals identify `learning-policy` in the returned error.
-
-## Bounded state
-
-Three maps are each capped at 256 entries per plugin process:
-
-- lane: session + turn -> lane label;
-- read receipt: session + turn + hashed owner + hashed target -> generation + canonical native path;
-- recovery: session + turn -> rejected tool, hashed owner, hashed exact target, generation, consumed, and closed.
-
-Active autonomous state is never evicted. A new turn purges only superseded turns from the same session. Capacity pressure fails closed until bounded state is available again.
-
-The plugin stores no learning content, USER/MEMORY text, raw tool argument object, or secret. The transient canonical receipt path may contain the on-disk skill directory name. State is not written to disk and cannot cross profile processes.
-
-## Deterministic protection
-
-`pre_tool_call` also:
-
-- rejects obvious private-key material before model-dispatched `memory` or `skill_manage` writes;
-- redirects direct `write_file` or `patch` attempts against current-profile USER, MEMORY, or local skill storage to native tools;
-- resolves relative generic-file targets through Hermes's native task-aware resolver and the hook's `task_id`;
-- resolves symlinks and lexical targets for supported direct file routes;
-- refuses Curator terminal commands outside the read-only allowlist;
-- fails closed on internal errors only after a native learning route is known;
-- leaves unrelated tools and every safe native foreground `skill_manage` operation available.
-
-## Compatibility boundary
-
-`compat.py` contains four version-scoped adapters to installed Hermes:
-
-- current write origin;
-- native file-mutation target extraction;
-- native task-aware file-path resolution;
-- native ephemeral background-review skill-read marking.
-
-The package does not import a private mutation, skill resolver, linter, ownership classifier, lifecycle function, or fuzzy-patch function. It reuses one native generic-file resolver solely to align route protection with file-tool behavior. Plugin Doctor, the focused suite, and the real native bridge test are the upgrade gate.
-
-## Explicit limits
-
-This plugin does not:
-
-- modify Hermes core;
-- create, patch, delete, stage, roll back, reconcile, archive, or lint learning content itself;
-- intercept internal dashboard/TUI/approved-replay writes that bypass model-dispatched tools;
-- guarantee that a model proposes useful durable learning;
-- deterministically prove semantic support for a paraphrased USER fact; the authority fence is prompt-level and therefore requires natural-profile regression evidence;
-- treat safe rejection as proof that learning quality succeeded;
-- make synthetic clean-profile evidence a substitute for mature-profile natural work.
-
-## Evidence selecting v0.8.2
-
-The v0.8.0 natural pilot selected the bridge and recovery budget. The v0.8.1 disposable-profile pilot then proved successful USER, MEMORY, new-skill, existing-skill, no-write, and fresh-session paths, but found one authority failure:
-
-- a fresh background review wrote a USER preference about class-level skill ownership, references, and one-session skills;
-- none of the six real LearnLab user messages stated that preference;
-- the USER file timestamp matched the background memory call, and the learned clause paraphrased native/plugin review instructions.
-
-That evidence selects an explicit background authority fence. It does not authorize Hermes-core changes, a shadow writer, raw-message state, or disabling autonomous USER learning.
-
-## Verification
-
-Run from this directory:
+Run this check before restarting profiles:
 
 ```bash
 python3 -m unittest -v test_plugin.py
@@ -180,30 +114,45 @@ hermes plugins doctor . --ci
 git diff --check
 ```
 
-The focused suite includes:
+## Turn it off
 
-- dynamic foreground/background/Curator prompt selection;
-- foreground USER-learning preservation and the background synthetic-review authority fence;
-- real native background skill creation followed by a bridged native patch;
-- exact supporting-file receipt isolation;
-- exact rejected-file recovery binding, including a freshly read same-owner file-switch attempt;
-- malformed and mismatched receipt refusal;
-- changed-argument, sibling-owner, file-switch, and memory-workaround refusal;
-- one sequential and concurrent retry allowance;
-- retry success/failure closure;
-- foreground capability preservation;
-- bounded state without raw learning content or argument objects;
-- active-state capacity pressure with fail-closed recovery;
-- task-CWD relative direct-file, private-key, and Curator terminal adversarial cases, with every Git command blocked;
-- compatibility-adapter drift failure.
+```bash
+hermes plugins disable hermes-learn-policy
+hermes plugins remove hermes-learn-policy
+```
 
-## Rollout discipline
+Restart Hermes afterward.
 
-Adopt one verified commit exactly. Verify per profile:
+The plugin saves no database or settings of its own. Removing it does not remove memories or skills that Hermes already accepted.
 
-- plugin version and enabled state;
-- checkout cleanliness and exact file hashes;
-- unchanged config, credentials, SOUL, USER, MEMORY, skills, cron, MCP, and gateway identity except for the explicitly installed plugin package;
-- process and fresh-session pickup separately from persisted bytes.
+## Trust and limits
 
-A disposable clean profile can prove creation and memory mechanics. Existing profiles remain the natural dense-catalog regression lane.
+Hermes plugins run inside Hermes with the current user's permissions. The installer scans source before installation, but a scan is not a sandbox or a code review. Read the source and pin a commit you trust.
+
+This plugin does not:
+
+- write learning files itself;
+- call a model or the network;
+- read credentials;
+- add commands, dashboards, or services;
+- control writes that never pass through tools requested by the model;
+- guarantee that every proposed memory deserves a permanent home.
+
+There is no shadow memory or second Curator. The plugin has enough to do already.
+
+## Development
+
+```bash
+python3 -m unittest -v test_plugin.py
+python3 -m py_compile __init__.py compat.py gate.py test_plugin.py
+hermes plugins doctor . --ci
+git diff --check
+```
+
+The test file covers regular work, automatic review, Curator, exact skill reads, one-retry behavior, concurrent calls, direct-file blocks, multiplexed profiles, short-lived state, and Hermes compatibility changes.
+
+See [CHANGELOG.md](CHANGELOG.md) for the short version history.
+
+## License
+
+No public license has been selected. Public source is available for inspection, but that alone does not grant permission to copy, modify, or redistribute it. A license will be chosen before release.

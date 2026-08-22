@@ -30,9 +30,10 @@ def load_plugin():
 
 
 class PluginContractTest(unittest.TestCase):
-    def test_manifest_declares_v082_dynamic_hooks(self):
+    def test_manifest_declares_v083_dynamic_hooks(self):
         manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.8.2")
+        self.assertEqual(manifest["version"], "0.8.3")
+        self.assertEqual(manifest.get("manifest_version", 1), 1)
         self.assertEqual(
             set(manifest["provides_hooks"]),
             {"pre_llm_call", "pre_tool_call", "post_tool_call"},
@@ -72,7 +73,13 @@ class PluginContractTest(unittest.TestCase):
         for context in (foreground, background, curator):
             self.assertIn("Hermes Learn Policy", context)
             self.assertLessEqual(len(context), 4000)
-            for workspace_term in ("Foldly", "SourceBand", "Apollo", "Orion", "KYD-"):
+            for workspace_term in (
+                "ClientProject",
+                "InternalWorkspace",
+                "AgentAlpha",
+                "AgentBeta",
+                "TEAM-",
+            ):
                 self.assertNotIn(workspace_term, context)
         for callback in ctx.hooks.values():
             self.assertTrue(
@@ -556,6 +563,32 @@ Original body.
         self.assertEqual(blocked["action"], "block")
         self.assertIn("memory(target='memory')", blocked["message"])
 
+    def test_direct_route_uses_profile_home_override_in_multiplexed_gateway(self):
+        plugin = load_plugin()
+        from hermes_constants import (
+            reset_hermes_home_override,
+            set_hermes_home_override,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            process_home = Path(tmp) / "default"
+            profile_home = Path(tmp) / "secondary"
+            target = profile_home / "memories" / "USER.md"
+            token = set_hermes_home_override(profile_home)
+            try:
+                with patch.dict(os.environ, {"HERMES_HOME": str(process_home)}):
+                    blocked = plugin.pre_tool_call(
+                        "write_file",
+                        {"path": str(target), "content": "direct bypass"},
+                        task_id="multiplexed-secondary",
+                    )
+            finally:
+                reset_hermes_home_override(token)
+
+        self.assertIsNotNone(blocked)
+        self.assertEqual(blocked["action"], "block")
+        self.assertIn("memory(target='user')", blocked["message"])
+
     def test_state_pressure_never_evicts_an_active_rejected_review(self):
         plugin = load_plugin()
         gate = sys.modules["hermes_learn_policy.gate"]
@@ -754,7 +787,13 @@ Original body.
         self.assertIn("Never switch owners or files", context)
         self.assertIn("When considering", context)
         self.assertLessEqual(len(context), 4000)
-        for workspace_term in ("Foldly", "SourceBand", "Apollo", "Orion", "KYD-"):
+        for workspace_term in (
+            "ClientProject",
+            "InternalWorkspace",
+            "AgentAlpha",
+            "AgentBeta",
+            "TEAM-",
+        ):
             self.assertNotIn(workspace_term, context)
 
     def test_curator_guidance_is_skill_only(self):

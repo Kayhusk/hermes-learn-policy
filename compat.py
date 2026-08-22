@@ -1,4 +1,4 @@
-"""Version-scoped read-only adapters to installed Hermes internals."""
+"""Version-scoped adapters to installed Hermes internals."""
 
 from pathlib import Path
 
@@ -27,7 +27,7 @@ class HermesCompatibilityError(RuntimeError):
 
 
 def ensure_compatible():
-    """Require the read-only adapters used by guidance and route protection."""
+    """Require the adapters used by guidance, route checks, and read restoration."""
     if any(
         adapter is None
         for adapter in (

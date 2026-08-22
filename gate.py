@@ -8,6 +8,8 @@ import shlex
 import threading
 from pathlib import Path
 
+from hermes_constants import get_hermes_home
+
 from .compat import (
     current_write_origin,
     file_mutation_targets,
@@ -260,7 +262,7 @@ def _curator_terminal_is_read_only(command):
 
 
 def _home():
-    return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+    return Path(get_hermes_home())
 
 
 def _direct_owner(path, home, task_id=""):
