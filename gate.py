@@ -39,13 +39,13 @@ _CURATOR_READ_COMMANDS = {
 
 SKILL_OWNER_GUIDANCE = """Before a skill write, load `skill-governance` with native `skill_view`. Inspect the catalog with `skills_list` and the current owner with `skill_view`, including relevant linked files. If inspection is incomplete, make no write. Update the existing owner after satisfying native read-before-write. Create a skill only when inspection finds no current owner for that responsibility. Keep related but distinct responsibilities separate and link them instead of copying guidance."""
 
-COHERENT_SKILL_CHANGE_GUIDANCE = """Keep a multi-file skill change coherent. If its owner and support files cannot all be updated, make no write."""
+COHERENT_SKILL_CHANGE_GUIDANCE = """Keep a multi-file skill proposal coherent. If an owner or index and a support file must change together, use one self-contained native mutation or make no write."""
 
 AUTONOMOUS_SKILL_RETRY_GUIDANCE = """After the first rejected skill write in an autonomous review, reread the same owner and exact file before one retry. Success or another rejection closes learning writes for that review. Do not switch owners or files to bypass a rejection."""
 
 LEARNING_QUALITY_GUIDANCE = f"""Hermes Learn Policy: durable learning
 
-Apply this policy only when considering a native `memory` or `skill_manage` write. A no-write result is valid.
+Apply this policy only when considering a native `memory` or `skill_manage` write. Save only material that will improve future sessions. A no-write result is valid.
 
 Choose the durable owner before writing:
 
@@ -63,7 +63,7 @@ Do not save secrets, changing status, task history, completion claims, issue, PR
 
 FOREGROUND_GUIDANCE = """Foreground lane
 
-The user's current task remains primary. The current user message may support a USER write when `profile-memory-governance` admits it."""
+The user's current task remains primary. The current real user message may support a USER write when `profile-memory-governance` admits it."""
 
 BACKGROUND_GUIDANCE = f"""Automatic review lane
 
