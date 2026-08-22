@@ -11,14 +11,18 @@ from pathlib import Path
 from .compat import (
     current_write_origin,
     file_mutation_targets,
+    mark_native_background_review_skill_read,
+    resolve_native_file_path,
 )
 
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 _STATE_LIMIT = 256
 _STATE_LOCK = threading.Lock()
-_REJECTIONS = {}
-_VIEWS = {}
+_RECOVERY = {}
+_READ_RECEIPTS = {}
 _LANES = {}
+_VIEW_GENERATION = 0
+_STATE_SATURATED = False
 _CURATOR_READ_COMMANDS = {
     "df",
     "du",
@@ -30,7 +34,7 @@ _CURATOR_READ_COMMANDS = {
     "stat",
     "wc",
 }
-_CURATOR_GIT_READ_COMMANDS = {"diff", "log", "rev-parse", "show", "status"}
+
 LEARNING_QUALITY_GUIDANCE = """Hermes Learn Policy — native learning quality
 
 When considering a native `memory` or `skill_manage` write, classify the durable owner first and save only material that will improve future sessions:
@@ -43,7 +47,7 @@ Before any memory write, load `profile-memory-governance` with native `skill_vie
 
 Before a skill write, load `skill-governance` with native `skill_view`, then inspect the current catalog and owner with native `skills_list` and `skill_view`, including relevant linked references. If the same responsibility or procedure already exists, update that owner only after satisfying native read-before-write. If inspection is incomplete, make no write. If inspection confirms no existing owner has that responsibility, native creation remains available. If responsibilities are related but distinct, keep them separate and link instead of merging or copying guidance.
 
-Keep a multi-file learning proposal coherent. If an owner/index change and support file are both required, do not persist only one half; prefer one self-contained native mutation or no write. After a native mutation rejection, make only a meaningfully changed, cause-directed recovery. Do not retry unchanged or create a sibling to route around the guard.
+Keep a multi-file learning proposal coherent. If an owner/index change and support file are both required, do not persist only one half; prefer one self-contained native mutation or no write. In an autonomous review, one native skill rejection permits only one same-owner retry after reading the exact target again; any memory rejection or completed retry ends learning writes for that review. Never switch owners or files to route around a rejection.
 
 Do not persist secrets, volatile status, task history, completion claims, issue/PR/commit/test receipts, duplicated meaning, misplaced procedures, or unnecessary machine-local paths. Prefer the current project/runtime source, session history, or no write when those are the correct owners. When replacing a consolidated entry, preserve every unaffected clause rather than silently dropping facts to make room. Preserve unrelated entries and use one native atomic memory batch when several entries change together."""
 
@@ -53,11 +57,34 @@ The user's current task remains primary. Apply this policy only if this turn con
 
 BACKGROUND_GUIDANCE = """Automatic background-review lane
 
-Inspect native owners before writing. A no-write result is valid. Never create a sibling to bypass ownership or read-before-write rejection. After rejection, use only a meaningfully changed recovery; an unchanged retry will be refused."""
+Inspect native owners before writing. A no-write result is valid. Never create a sibling to bypass ownership or read-before-write rejection. After a skill rejection, read the exact same owner and target file once before one retry; every further learning write in this review will be refused. A memory rejection ends learning writes for this review."""
 
 CURATOR_GUIDANCE = """Hermes Learn Policy — Curator consolidation lane
 
-This lane is skill-only. Before a write, load `skill-governance`, inspect current owners with native `skills_list` and `skill_view`, and keep related but distinct responsibilities separate. A no-write result is valid. Preserve native Curator ownership, pins, archive/delete, and provenance rules. Use terminal only for read-only inspection; durable skill mutation must remain on native `skill_manage`. After rejection, make only a meaningfully changed recovery and never create a sibling workaround."""
+This lane is skill-only. Before a write, load `skill-governance`, inspect current owners with native `skills_list` and `skill_view`, and keep related but distinct responsibilities separate. A no-write result is valid. Preserve native Curator ownership, pins, archive/delete, and provenance rules. Use terminal only for read-only inspection; durable skill mutation must remain on native `skill_manage`. After a rejection, read the exact same owner and target file once before one retry; every further skill write in this review will be refused."""
+
+
+def _purge_superseded_turns_locked(session_id, turn_id):
+    """Drop only prior turns from this session; never evict another active turn."""
+    global _STATE_SATURATED
+    session_id, turn_id = str(session_id), str(turn_id)
+    for mapping in (_LANES, _RECOVERY, _READ_RECEIPTS):
+        for key in tuple(mapping):
+            if key[0] == session_id and key[1] != turn_id:
+                mapping.pop(key, None)
+    _STATE_SATURATED = any(
+        len(mapping) >= _STATE_LIMIT
+        for mapping in (_LANES, _RECOVERY, _READ_RECEIPTS)
+    )
+
+
+def _bounded_store_locked(mapping, key, value):
+    global _STATE_SATURATED
+    if key not in mapping and len(mapping) >= _STATE_LIMIT:
+        _STATE_SATURATED = True
+        return False
+    mapping[key] = value
+    return True
 
 
 def _remember_lane(session_id, turn_id, lane):
@@ -65,9 +92,8 @@ def _remember_lane(session_id, turn_id, lane):
         return
     key = (str(session_id), str(turn_id))
     with _STATE_LOCK:
-        if len(_LANES) >= _STATE_LIMIT and key not in _LANES:
-            _LANES.pop(next(iter(_LANES)))
-        _LANES[key] = lane
+        _purge_superseded_turns_locked(*key)
+        _bounded_store_locked(_LANES, key, lane)
 
 
 def pre_llm_call(platform="", session_id="", turn_id="", **_):
@@ -83,58 +109,132 @@ def pre_llm_call(platform="", session_id="", turn_id="", **_):
     return {"context": f"{LEARNING_QUALITY_GUIDANCE}\n\n{guidance}"}
 
 
-def _fingerprint(tool_name, args):
-    payload = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(f"{tool_name}\0{payload}".encode()).hexdigest()
+def _digest(value):
+    return hashlib.sha256(str(value or "").encode()).hexdigest()
 
 
-def _state_key(session_id, turn_id, tool_name, args):
+def _turn_key(session_id, turn_id):
     if not session_id or not turn_id:
         return None
-    return (str(session_id), str(turn_id), _fingerprint(tool_name, args))
+    return (str(session_id), str(turn_id))
 
 
-def _view_key(session_id, turn_id, tool_name, args):
-    if not session_id or not turn_id:
+def _owner_digest(args):
+    return _digest(args.get("name")) if isinstance(args, dict) else _digest("")
+
+
+def _target_label(args):
+    if not isinstance(args, dict):
         return None
-    name = str(args.get("name") or "") if isinstance(args, dict) else ""
-    identity = "*" if tool_name == "memory" else hashlib.sha256(name.encode()).hexdigest()
-    return (str(session_id), str(turn_id), identity)
+    action = str(args.get("action") or "")
+    if action not in {"edit", "patch", "delete", "write_file", "remove_file"}:
+        return None
+    return str(args.get("file_path") or "SKILL.md")
+
+
+def _receipt_key(session_id, turn_id, args):
+    turn = _turn_key(session_id, turn_id)
+    target = _target_label(args)
+    if turn is None or target is None:
+        return None
+    return (*turn, _owner_digest(args), _digest(target))
+
+
+def _recovery_target_digest(args):
+    if not isinstance(args, dict):
+        return _digest("SKILL.md")
+    return _digest(args.get("file_path") or "SKILL.md")
+
+
+def _autonomous_lane(session_id, turn_id):
+    turn = _turn_key(session_id, turn_id)
+    if turn is None:
+        return False
+    with _STATE_LOCK:
+        lane = _LANES.get(turn)
+    return lane in {"background_review", "curator"}
+
+
+def _parse_skill_view_result(args, result):
+    if not isinstance(args, dict):
+        return None
+    try:
+        payload = json.loads(result) if isinstance(result, str) else result
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return None
+    if str(payload.get("name") or "") != str(args.get("name") or ""):
+        return None
+    expected = str(args.get("file_path") or "SKILL.md")
+    if args.get("file_path") and str(payload.get("file") or "") != expected:
+        return None
+    path = payload.get("_source_path")
+    if path is None and expected == "SKILL.md":
+        skill_dir = payload.get("skill_dir")
+        if isinstance(skill_dir, str) and Path(skill_dir).is_absolute():
+            path = str(Path(skill_dir) / "SKILL.md")
+        elif isinstance(payload.get("path"), str) and Path(payload["path"]).is_absolute():
+            path = payload["path"]
+    if not isinstance(path, str) or not Path(path).is_absolute():
+        return None
+    return Path(path).resolve()
+
+
+def _remember_view(session_id, turn_id, args, result):
+    global _VIEW_GENERATION
+    key = _receipt_key(session_id, turn_id, {
+        "action": "patch",
+        "name": args.get("name") if isinstance(args, dict) else "",
+        "file_path": args.get("file_path") if isinstance(args, dict) else None,
+    })
+    path = _parse_skill_view_result(args, result)
+    if key is None or path is None:
+        return
+    with _STATE_LOCK:
+        _VIEW_GENERATION += 1
+        _bounded_store_locked(_READ_RECEIPTS, key, (_VIEW_GENERATION, path))
 
 
 def _remember_rejection(session_id, turn_id, tool_name, args):
-    key = _state_key(session_id, turn_id, tool_name, args)
-    if key is None:
+    if not _autonomous_lane(session_id, turn_id):
+        return
+    turn = _turn_key(session_id, turn_id)
+    if turn is None:
         return
     with _STATE_LOCK:
-        if len(_REJECTIONS) >= _STATE_LIMIT:
-            _REJECTIONS.pop(next(iter(_REJECTIONS)))
-        view_key = _view_key(session_id, turn_id, tool_name, args)
-        _REJECTIONS[key] = _VIEWS.get(view_key, 0)
-
-
-def _remember_view(session_id, turn_id, args):
-    key = _view_key(session_id, turn_id, "skill_view", args)
-    if key is None:
-        return
-    with _STATE_LOCK:
-        if len(_VIEWS) >= _STATE_LIMIT and key not in _VIEWS:
-            _VIEWS.pop(next(iter(_VIEWS)))
-        _VIEWS[key] = _VIEWS.get(key, 0) + 1
+        if turn in _RECOVERY:
+            _RECOVERY[turn]["closed"] = True
+            return
+        state = {
+            "tool": str(tool_name),
+            "owner": _owner_digest(args) if tool_name == "skill_manage" else None,
+            "target": (
+                _recovery_target_digest(args)
+                if tool_name == "skill_manage"
+                else None
+            ),
+            "rejected_generation": _VIEW_GENERATION,
+            "consumed": False,
+            "closed": tool_name != "skill_manage",
+        }
+        _bounded_store_locked(_RECOVERY, turn, state)
 
 
 def post_tool_call(
-    tool_name="", args=None, status="", session_id="", turn_id="", **_
+    tool_name="",
+    args=None,
+    result=None,
+    status="",
+    session_id="",
+    turn_id="",
+    **_,
 ):
+    args = args if isinstance(args, dict) else {}
     if tool_name == "skill_view" and status == "ok":
-        _remember_view(session_id, turn_id, args if isinstance(args, dict) else {})
+        _remember_view(session_id, turn_id, args, result)
     elif tool_name in {"skill_manage", "memory"} and status == "error":
-        _remember_rejection(
-            session_id,
-            turn_id,
-            tool_name,
-            args if isinstance(args, dict) else {},
-        )
+        _remember_rejection(session_id, turn_id, tool_name, args)
     return None
 
 
@@ -154,30 +254,15 @@ def _curator_terminal_is_read_only(command):
     executable = Path(tokens[0]).name
     if executable != tokens[0] or "/" in tokens[0] or "\\" in tokens[0]:
         return False
-    if executable != "git":
-        return executable in _CURATOR_READ_COMMANDS
-    index = 1
-    while index < len(tokens) and tokens[index].startswith("-"):
-        index += 2 if tokens[index] == "-C" else 1
-    if index >= len(tokens) or tokens[index] not in _CURATOR_GIT_READ_COMMANDS:
-        return False
-    return not any(
-        token == "--output"
-        or token.startswith("--output=")
-        or token == "--ext-diff"
-        or token == "--textconv"
-        for token in tokens[index + 1 :]
-    )
+    return executable in _CURATOR_READ_COMMANDS
 
 
 def _home():
     return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
 
 
-def _direct_owner(path, home):
-    base = Path(os.environ.get("TERMINAL_CWD", Path.cwd()))
-    raw = Path(path).expanduser()
-    candidate = Path(os.path.abspath(raw if raw.is_absolute() else base / raw))
+def _direct_owner(path, home, task_id=""):
+    candidate = resolve_native_file_path(path, task_id)
     lexical_home = Path(os.path.abspath(home))
     for target, root in (
         (candidate.resolve(), lexical_home.resolve()),
@@ -212,7 +297,7 @@ def _persisted_text(args):
     return "\n".join(values)
 
 
-def _pre_decision(tool_name, args, home):
+def _pre_decision(tool_name, args, home, task_id=""):
     if tool_name in {"skill_manage", "memory"} and PRIVATE_KEY_RE.search(
         _persisted_text(args)
     ):
@@ -223,7 +308,7 @@ def _pre_decision(tool_name, args, home):
 
     if tool_name in {"write_file", "patch"}:
         for path in file_mutation_targets(tool_name, args):
-            owner = _direct_owner(path, home)
+            owner = _direct_owner(path, home, task_id)
             if owner:
                 return {
                     "action": "block",
@@ -241,15 +326,27 @@ def pre_tool_call(
     home=None,
     session_id="",
     turn_id="",
+    task_id="",
     **kwargs,
 ):
     args = args if isinstance(args, dict) else {}
+    turn = _turn_key(session_id, turn_id)
     with _STATE_LOCK:
-        lane = _LANES.get((str(session_id), str(turn_id)))
+        lane = _LANES.get(turn) if turn is not None else None
+        saturated = _STATE_SATURATED
     if (
-        tool_name == "terminal"
-        and lane == "curator"
+        saturated
+        and current_write_origin() == "background_review"
+        and tool_name in {"skill_manage", "memory", "terminal"}
     ):
+        return {
+            "action": "block",
+            "message": (
+                "learning-policy: autonomous review state capacity reached; "
+                "end this review and continue on a fresh turn"
+            ),
+        }
+    if tool_name == "terminal" and lane == "curator":
         if not _curator_terminal_is_read_only(args.get("command")):
             return {
                 "action": "block",
@@ -261,26 +358,55 @@ def pre_tool_call(
         return None
     if tool_name not in {"skill_manage", "memory", "write_file", "patch"}:
         return None
-    key = _state_key(session_id, turn_id, tool_name, args)
-    if key is not None:
+
+    receipt_path = None
+    if tool_name == "skill_manage" and turn is not None:
+        receipt_key = _receipt_key(session_id, turn_id, args)
         with _STATE_LOCK:
-            rejected_at = _REJECTIONS.get(key)
-            current_view = _VIEWS.get(
-                _view_key(session_id, turn_id, tool_name, args), 0
-            )
-            rejected = rejected_at is not None and current_view <= rejected_at
-            if rejected_at is not None and not rejected:
-                _REJECTIONS[key] = current_view
-        if rejected:
-            return {
-                "action": "block",
-                "message": (
-                    "learning-policy: unchanged rejected learning call refused; "
-                    "make a meaningfully changed recovery or end this review"
-                ),
-            }
+            receipt = _READ_RECEIPTS.get(receipt_key) if receipt_key is not None else None
+            recovery = _RECOVERY.get(turn)
+            if lane in {"background_review", "curator"} and recovery is not None:
+                allowed = (
+                    not recovery["closed"]
+                    and not recovery["consumed"]
+                    and recovery["tool"] == "skill_manage"
+                    and recovery["owner"] == _owner_digest(args)
+                    and recovery["target"] == _recovery_target_digest(args)
+                    and receipt is not None
+                    and receipt[0] > recovery["rejected_generation"]
+                )
+                if not allowed:
+                    return {
+                        "action": "block",
+                        "message": (
+                            "learning-policy: autonomous review-wide recovery refused; "
+                            "read the rejected owner and exact target once, retry once, or end this review"
+                        ),
+                    }
+                recovery["consumed"] = True
+                recovery["closed"] = True
+            receipt_path = receipt[1] if receipt is not None else None
+    elif tool_name == "memory" and turn is not None:
+        with _STATE_LOCK:
+            recovery = _RECOVERY.get(turn)
+            if lane in {"background_review", "curator"} and recovery is not None:
+                return {
+                    "action": "block",
+                    "message": (
+                        "learning-policy: autonomous review-wide recovery refused; "
+                        "a prior learning rejection ended writes for this review"
+                    ),
+                }
+
+    if receipt_path is not None and lane in {"background_review", "curator"}:
+        mark_native_background_review_skill_read(receipt_path)
     try:
-        return _pre_decision(tool_name, args, Path(home or _home()))
+        return _pre_decision(
+            tool_name,
+            args,
+            Path(home or _home()),
+            task_id=task_id,
+        )
     except Exception:
         if tool_name in {"skill_manage", "memory"}:
             return {

@@ -1,15 +1,23 @@
 """Version-scoped read-only adapters to installed Hermes internals."""
 
+from pathlib import Path
+
 try:
     from agent.tool_dispatch_helpers import (
         _extract_file_mutation_targets as _get_file_mutation_targets,
     )
+    from tools.file_tools import _resolve_path_for_task as _resolve_file_path_for_task
     from tools.skill_provenance import (
         get_current_write_origin as _get_current_write_origin,
+    )
+    from tools.skill_manager_tool import (
+        mark_background_review_skill_read as _mark_background_review_skill_read,
     )
 except ImportError as exc:
     _get_file_mutation_targets = None
     _get_current_write_origin = None
+    _mark_background_review_skill_read = None
+    _resolve_file_path_for_task = None
     _REQUIRED_IMPORT_ERROR = exc
 else:
     _REQUIRED_IMPORT_ERROR = None
@@ -25,6 +33,8 @@ def ensure_compatible():
         for adapter in (
             _get_file_mutation_targets,
             _get_current_write_origin,
+            _mark_background_review_skill_read,
+            _resolve_file_path_for_task,
         )
     ):
         raise HermesCompatibilityError(
@@ -42,3 +52,17 @@ def current_write_origin():
     ensure_compatible()
     assert _get_current_write_origin is not None
     return str(_get_current_write_origin() or "foreground")
+
+
+def resolve_native_file_path(path, task_id=""):
+    """Resolve a file target exactly as the installed native file tool does."""
+    ensure_compatible()
+    assert _resolve_file_path_for_task is not None
+    return Path(_resolve_file_path_for_task(str(path), str(task_id or "default")))
+
+
+def mark_native_background_review_skill_read(path):
+    """Replay one verified native skill-view receipt into this tool context."""
+    ensure_compatible()
+    assert _mark_background_review_skill_read is not None
+    _mark_background_review_skill_read(Path(path))

@@ -1,140 +1,205 @@
 # Hermes Learn Policy
 
-Standalone Hermes plugin that dynamically guides native learning writers and protects native learning routes without replacing Hermes's mutation system.
+Standalone Hermes plugin that dynamically guides native learning writers, bridges one verified native skill read across tool-worker contexts, and bounds autonomous rejection recovery without replacing Hermes's mutation system.
 
 ## Responsibility boundary
 
-**Native Hermes owns** `memory` and `skill_manage`, target resolution, validation, capacity, locking, atomic writes, staging, ownership, provenance, rollback, pins, linting, and archive/delete lifecycle.
+**Native Hermes owns** `memory` and `skill_manage`, target resolution, validation, capacity, locking, atomic writes, staging, ownership, provenance, rollback, pinning, archive/delete, and lifecycle.
 
-**Hermes Learn Policy owns only:**
+**This plugin owns only:**
 
-- lane-aware `pre_llm_call` guidance for foreground turns, automatic background review, and Curator;
-- deterministic `pre_tool_call` protection for direct durable-learning file bypasses, obvious private keys, destructive Curator terminal commands, and unchanged retries after native rejection;
-- observational `post_tool_call` tracking of native rejection and relevant `skill_view` evidence in bounded process memory.
+- lane-specific guidance immediately before each LLM decision;
+- deterministic protection against direct learning-file writes and obvious private keys;
+- a bounded ephemeral receipt for successful native `skill_view` results;
+- replay of that receipt into Hermes's existing background-review read marker;
+- one review-wide autonomous recovery budget;
+- a strict read-only terminal allowlist for Curator.
 
-It does not write USER, MEMORY, or skills itself.
+It has no model tool, writer, database, service, daemon, alternate memory store, linter, rollback engine, or second Curator. One version-scoped native file resolver is reused so direct-route checks match Hermes's actual task CWD.
 
-## Dynamic native path
+## Version 0.8.1
+
+v0.8.1 preserves the three public hooks introduced in v0.8.0:
+
+- `pre_llm_call`
+- `pre_tool_call`
+- `post_tool_call`
+
+It adds no dependency and modifies no Hermes core file.
+
+## Runtime flow
 
 ```text
-foreground AIAgent turn
-background_review AIAgent turn
-Curator AIAgent turn
+foreground / background review / Curator
         |
         v
-pre_llm_call -> lane policy appended to the API-bound user message
+pre_llm_call
+  -> record lane by session + turn
+  -> append lane-specific policy to the API-bound user message
         |
         v
 native model decision
         |
-        v
-pre_tool_call -> deterministic route/safety/retry checks
+        +---- skill_view ----------------------------------+
+        |                                                   |
+        |                                            post_tool_call
+        |                                      validate native success
+        |                                      record exact path receipt
+        |                                                   |
+        +---- skill_manage / memory                         |
+        |                                                   |
+        v                                                   |
+pre_tool_call <---------------------------------------------+
+  -> enforce autonomous recovery budget
+  -> replay exact receipt into native background read mark
+  -> apply deterministic route/secret protection
         |
         v
 native memory / skill_manage
         |
         v
-post_tool_call -> observe native outcome only
+post_tool_call
+  -> observe native success or rejection
+  -> never rewrite the native result
 ```
 
-Hermes binds write origin before `pre_llm_call`. The hook runs once for the actual turn and its context is appended to the API-only user message, preserving the cached system prompt and clean transcript. Background review uses normal `AIAgent.run_conversation()` with origin `background_review`. Curator uses normal `AIAgent.run_conversation()` with `platform="curator"`.
+`pre_llm_call` context is dynamic and API-only. It does not modify the cached system prompt or past conversation.
 
 ## Lane policy
 
 ### Foreground
 
-The current user task remains primary. Learning policy applies only when the turn considers `memory` or `skill_manage`.
-
-- USER holds stable user facts and preferences.
-- MEMORY holds durable environment and agent facts, written declaratively.
-- Skills hold reusable class-level procedures and decision methods.
-- Replacements preserve every unrelated clause.
-- Volatile status, task history, completion receipts, secrets, duplicated meaning, misplaced procedures, and unnecessary machine-local paths are not saved.
+Foreground guidance is conditional. The user's task remains primary, no write is valid, and foreground user-directed learning retains the complete native tool capability. Autonomous recovery throttling does not apply.
 
 ### Automatic background review
 
-- Inspect existing owners through native `skills_list` and `skill_view` before writing.
-- A no-write result is valid.
-- Update the current owner when native policy permits; create only after confirmed ownership absence.
-- Do not create siblings to bypass ownership or read-before-write rejection.
-- After native rejection, only a meaningfully changed, cause-directed recovery is valid.
+The reviewer must classify USER, MEMORY, and skill ownership, load the two governance owners, inspect the catalogue and target, preserve unrelated USER/MEMORY clauses, and accept no write as a valid outcome.
+
+After a skill rejection, only one same-owner retry is possible, and only after reading the exact target file again. A memory rejection ends learning writes for that review.
 
 ### Curator
 
-Curator receives a separate skill-only policy. It preserves native Curator ownership, pins, provenance, and archive/delete behavior. Terminal remains available through a small standard-library read-only command allowlist; other autonomous terminal commands are refused so durable changes stay on native `skill_manage`.
+Curator receives a separate skill-only policy. It preserves native Curator ownership, pins, provenance, and archive/delete behavior. Terminal remains available through a small standard-library read-only allowlist. Git is excluded entirely because repository configuration can execute external programs even for commands such as `git status`.
 
-## Bounded rejection handling
+## Native read bridge
 
-`post_tool_call` records only:
+Installed Hermes records background `skill_view` reads in a `ContextVar`. Separate tool-worker contexts can lose that mark before the following `skill_manage` call.
 
-- session ID;
-- turn ID;
-- SHA-256 of tool name plus arguments;
-- the relevant skill-view generation.
+v0.8.1 uses the smallest no-core bridge:
 
-`pre_llm_call` records only the lane label for the same session and turn so `pre_tool_call` can distinguish Curator from ordinary background review without relying on an unavailable pre-tool platform field.
+1. `post_tool_call` accepts a receipt only when the native `skill_view` result is a successful mapping whose name and requested supporting file match the call.
+2. The native result's canonical absolute path is retained only in bounded in-process state for that session and turn.
+3. `pre_tool_call(skill_manage)` selects only the receipt matching the same hashed skill identity and exact hashed target file.
+4. The plugin calls Hermes's existing `mark_background_review_skill_read(Path)` function in the current tool context.
+5. Native `skill_manage` performs every subsequent ownership, provenance, validation, read-before-write, and mutation decision.
 
-Raw arguments, skill names, learning content, and secrets are never stored in retry state. Arguments and skill identities are hashed before storage. Rejection, view, and lane maps are each capped at 256 entries per plugin process.
+Failed, malformed, mismatched, relative-path, unrelated-owner, and unrelated-file results create no usable receipt. The bridge imports no private writer, linter, lifecycle function, or fuzzy-patch implementation.
 
-`pre_tool_call` refuses an unchanged learning call after native rejection. Changed arguments are allowed. A successful `skill_view` for the same skill permits one same-argument retry and consumes that allowance atomically; an unrelated skill view does not. If native rejects again, the next unchanged attempt is refused.
+## Review-wide recovery
+
+Recovery applies only to automatic background review and Curator.
+
+- The first native skill rejection records the rejected tool, hashed skill owner, hashed exact target file, and current read generation.
+- Changed arguments, another target file, a sibling skill, or a memory write cannot bypass that rejection.
+- A successful same-owner exact-target `skill_view` after rejection arms one retry.
+- Admission is consumed atomically before native execution, so concurrent duplicate calls yield exactly one allow.
+- Retry success or failure closes learning writes for the rest of that review.
+- A memory rejection closes learning writes immediately.
+- Read-only diagnosis remains available.
+- A new turn receives a fresh budget.
+
+The first native result is never transformed or hidden. Plugin refusals identify `learning-policy` in the returned error.
+
+## Bounded state
+
+Three maps are each capped at 256 entries per plugin process:
+
+- lane: session + turn -> lane label;
+- read receipt: session + turn + hashed owner + hashed target -> generation + canonical native path;
+- recovery: session + turn -> rejected tool, hashed owner, hashed exact target, generation, consumed, and closed.
+
+Active autonomous state is never evicted. A new turn purges only superseded turns from the same session. Capacity pressure fails closed until bounded state is available again.
+
+The plugin stores no learning content, USER/MEMORY text, raw tool argument object, or secret. The transient canonical receipt path may contain the on-disk skill directory name. State is not written to disk and cannot cross profile processes.
 
 ## Deterministic protection
 
-The plugin also:
+`pre_tool_call` also:
 
-- redirects generic `write_file` or `patch` calls targeting current-profile USER, MEMORY, or local skills back to native learning tools;
 - rejects obvious private-key material before model-dispatched `memory` or `skill_manage` writes;
+- redirects direct `write_file` or `patch` attempts against current-profile USER, MEMORY, or local skill storage to native tools;
+- resolves relative generic-file targets through Hermes's native task-aware resolver and the hook's `task_id`;
+- resolves symlinks and lexical targets for supported direct file routes;
+- refuses Curator terminal commands outside the read-only allowlist;
 - fails closed on internal errors only after a native learning route is known;
-- leaves unrelated tools and every native `skill_manage` operation available.
+- leaves unrelated tools and every safe native foreground `skill_manage` operation available.
 
 ## Compatibility boundary
 
-`compat.py` contains two version-scoped read-only adapters to installed Hermes:
+`compat.py` contains four version-scoped adapters to installed Hermes:
 
 - current write origin;
 - native file-mutation target extraction;
+- native task-aware file-path resolution;
+- native ephemeral background-review skill-read marking.
 
-It imports no private mutation, resolver, linter, lifecycle, ownership, terminal classifier, or fuzzy-patch function. Curator terminal classification uses only `shlex` and an explicit read-only command set. Plugin Doctor and focused tests are the upgrade gate.
+The package does not import a private mutation, skill resolver, linter, ownership classifier, lifecycle function, or fuzzy-patch function. It reuses one native generic-file resolver solely to align route protection with file-tool behavior. Plugin Doctor, the focused suite, and the real native bridge test are the upgrade gate.
 
 ## Explicit limits
 
 This plugin does not:
 
 - modify Hermes core;
-- mutate, rewrite, roll back, stage, reconcile, archive, or lint learning content;
-- add a second memory or skill tool;
-- reconstruct native patches or target resolution;
-- persist rejection receipts;
+- create, patch, delete, stage, roll back, reconcile, archive, or lint learning content itself;
 - intercept internal dashboard/TUI/approved-replay writes that bypass model-dispatched tools;
-- guarantee that a native background patch succeeds after `skill_view` when the installed host loses its read mark across tool-worker contexts.
+- guarantee that a model proposes useful durable learning;
+- treat safe rejection as proof that learning quality succeeded;
+- make synthetic clean-profile evidence a substitute for mature-profile natural work.
 
-A read-receipt compatibility bridge is deliberately excluded from v0.8. Add it only if the dynamic pilot proves successful existing-owner updates still require one.
+## Evidence selecting v0.8.1
 
-## Evidence that selected v0.8
+The v0.8.0 natural pilot proved dynamic foreground delivery and native safety. It also found:
 
-The v0.7 fleet pilot proved the frozen policy section was present but too distant from the live decision:
+- Apollo received ten skill rejections across two reviews by changing files, arguments, and owners after failures.
+- Successful `skill_view` calls still preceded native `not loaded in this review turn` errors.
+- Talos made one promising USER write but no profile produced a successful skill update or new skill creation.
 
-- Apollo repeated one rejected patch three times.
-- Talos continued after rejection and rewrote USER clauses without the required live-target read.
-- Orion stopped after one rejection but produced no successful owner update.
-- Metis did not adopt v0.7 in a fresh runtime.
+Those observations select the bridge and review-wide budget. They do not authorize a shadow writer.
 
-v0.8 moves semantic guidance to the same native `pre_llm_call` seam used by Ponytail and adds bounded native-result observation instead of adding shadow mutation machinery.
+## Verification
 
-## Check
+Run from this directory:
 
 ```bash
 python3 -m unittest -v test_plugin.py
-hermes plugins doctor . --ci
 python3 -m py_compile __init__.py compat.py gate.py test_plugin.py
+hermes plugins doctor . --ci
+git diff --check
 ```
 
-Rollout is exact-commit only to approved non-default profiles. Gateway restart and fresh-session pickup remain operator-owned.
+The focused suite includes:
 
-Sources:
+- dynamic foreground/background/Curator prompt selection;
+- real native background skill creation followed by a bridged native patch;
+- exact supporting-file receipt isolation;
+- exact rejected-file recovery binding, including a freshly read same-owner file-switch attempt;
+- malformed and mismatched receipt refusal;
+- changed-argument, sibling-owner, file-switch, and memory-workaround refusal;
+- one sequential and concurrent retry allowance;
+- retry success/failure closure;
+- foreground capability preservation;
+- bounded state without raw learning content or argument objects;
+- active-state capacity pressure with fail-closed recovery;
+- task-CWD relative direct-file, private-key, and Curator terminal adversarial cases, with every Git command blocked;
+- compatibility-adapter drift failure.
 
-- https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks
-- installed `agent/turn_context.py`
-- installed `agent/background_review.py`
-- installed `agent/curator.py`
-- installed `model_tools.py`
+## Rollout discipline
+
+Adopt one verified commit exactly. Verify per profile:
+
+- plugin version and enabled state;
+- checkout cleanliness and exact file hashes;
+- unchanged config, credentials, SOUL, USER, MEMORY, skills, cron, MCP, and gateway identity except for the explicitly installed plugin package;
+- process and fresh-session pickup separately from persisted bytes.
+
+A disposable clean profile can prove creation and memory mechanics. Existing profiles remain the natural dense-catalog regression lane.
