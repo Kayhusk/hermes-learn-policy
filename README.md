@@ -17,9 +17,9 @@ Standalone Hermes plugin that dynamically guides native learning writers, bridge
 
 It has no model tool, writer, database, service, daemon, alternate memory store, linter, rollback engine, or second Curator. One version-scoped native file resolver is reused so direct-route checks match Hermes's actual task CWD.
 
-## Version 0.8.1
+## Version 0.8.2
 
-v0.8.1 preserves the three public hooks introduced in v0.8.0:
+v0.8.2 preserves the three public hooks introduced in v0.8.0:
 
 - `pre_llm_call`
 - `pre_tool_call`
@@ -69,11 +69,13 @@ post_tool_call
 
 ### Foreground
 
-Foreground guidance is conditional. The user's task remains primary, no write is valid, and foreground user-directed learning retains the complete native tool capability. Autonomous recovery throttling does not apply.
+Foreground guidance is conditional. The user's task remains primary, the current real user message remains eligible evidence for USER learning, no write is valid, and foreground user-directed learning retains the complete native tool capability. Autonomous recovery throttling does not apply.
 
 ### Automatic background review
 
 The reviewer must classify USER, MEMORY, and skill ownership, load the two governance owners, inspect the catalogue and target, preserve unrelated USER/MEMORY clauses, and accept no write as a valid outcome.
+
+The current autonomous review prompt is synthetic machinery, not a real user statement. System prompts, plugin context, review instructions, skills, assistant output, and tool results may guide process or supply bounded evidence, but they do not become user preferences. USER writes require explicit support from pre-existing real user messages in the inherited history or an independently verified authoritative factual source. Legitimate autonomous USER learning remains available.
 
 After a skill rejection, only one same-owner retry is possible, and only after reading the exact target file again. A memory rejection ends learning writes for that review.
 
@@ -85,7 +87,7 @@ Curator receives a separate skill-only policy. It preserves native Curator owner
 
 Installed Hermes records background `skill_view` reads in a `ContextVar`. Separate tool-worker contexts can lose that mark before the following `skill_manage` call.
 
-v0.8.1 uses the smallest no-core bridge:
+v0.8.2 retains the smallest no-core bridge:
 
 1. `post_tool_call` accepts a receipt only when the native `skill_view` result is a successful mapping whose name and requested supporting file match the call.
 2. The native result's canonical absolute path is retained only in bounded in-process state for that session and turn.
@@ -153,18 +155,19 @@ This plugin does not:
 - create, patch, delete, stage, roll back, reconcile, archive, or lint learning content itself;
 - intercept internal dashboard/TUI/approved-replay writes that bypass model-dispatched tools;
 - guarantee that a model proposes useful durable learning;
+- deterministically prove semantic support for a paraphrased USER fact; the authority fence is prompt-level and therefore requires natural-profile regression evidence;
 - treat safe rejection as proof that learning quality succeeded;
 - make synthetic clean-profile evidence a substitute for mature-profile natural work.
 
-## Evidence selecting v0.8.1
+## Evidence selecting v0.8.2
 
-The v0.8.0 natural pilot proved dynamic foreground delivery and native safety. It also found:
+The v0.8.0 natural pilot selected the bridge and recovery budget. The v0.8.1 disposable-profile pilot then proved successful USER, MEMORY, new-skill, existing-skill, no-write, and fresh-session paths, but found one authority failure:
 
-- Apollo received ten skill rejections across two reviews by changing files, arguments, and owners after failures.
-- Successful `skill_view` calls still preceded native `not loaded in this review turn` errors.
-- Talos made one promising USER write but no profile produced a successful skill update or new skill creation.
+- a fresh background review wrote a USER preference about class-level skill ownership, references, and one-session skills;
+- none of the six real LearnLab user messages stated that preference;
+- the USER file timestamp matched the background memory call, and the learned clause paraphrased native/plugin review instructions.
 
-Those observations select the bridge and review-wide budget. They do not authorize a shadow writer.
+That evidence selects an explicit background authority fence. It does not authorize Hermes-core changes, a shadow writer, raw-message state, or disabling autonomous USER learning.
 
 ## Verification
 
@@ -180,6 +183,7 @@ git diff --check
 The focused suite includes:
 
 - dynamic foreground/background/Curator prompt selection;
+- foreground USER-learning preservation and the background synthetic-review authority fence;
 - real native background skill creation followed by a bridged native patch;
 - exact supporting-file receipt isolation;
 - exact rejected-file recovery binding, including a freshly read same-owner file-switch attempt;

@@ -1,5 +1,5 @@
 name: hermes-learn-policy
-version: "0.8.1"
+version: "0.8.2"
 description: Dynamic native learning policy and route protection.
 provides_hooks:
   - pre_llm_call

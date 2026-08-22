@@ -30,9 +30,9 @@ def load_plugin():
 
 
 class PluginContractTest(unittest.TestCase):
-    def test_manifest_declares_v081_dynamic_hooks(self):
+    def test_manifest_declares_v082_dynamic_hooks(self):
         manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "0.8.1")
+        self.assertEqual(manifest["version"], "0.8.2")
         self.assertEqual(
             set(manifest["provides_hooks"]),
             {"pre_llm_call", "pre_tool_call", "post_tool_call"},
@@ -81,6 +81,42 @@ class PluginContractTest(unittest.TestCase):
                     for parameter in inspect.signature(callback).parameters.values()
                 )
             )
+
+    def test_background_guidance_fences_synthetic_policy_from_user_authority(self):
+        plugin = load_plugin()
+        gate = sys.modules["hermes_learn_policy.gate"]
+        with patch.object(
+            gate, "current_write_origin", return_value="background_review"
+        ):
+            context = plugin.pre_llm_call(
+                platform="telegram",
+                session_id="authority-session",
+                turn_id="authority-turn",
+                user_message="Review the conversation and update memory and skills.",
+            )["context"]
+
+        self.assertIn("current review prompt is synthetic", context)
+        self.assertIn("not a real user statement", context)
+        self.assertIn("pre-existing real user messages", context)
+        for source in (
+            "system prompts",
+            "plugin context",
+            "review instructions",
+            "skills",
+            "assistant output",
+            "tool results",
+        ):
+            self.assertIn(source, context)
+        self.assertIn("Autonomous USER learning remains available", context)
+        self.assertIn("If no authoritative support exists, make no USER write", context)
+
+    def test_foreground_user_learning_remains_available(self):
+        plugin = load_plugin()
+        gate = sys.modules["hermes_learn_policy.gate"]
+        with patch.object(gate, "current_write_origin", return_value="foreground"):
+            context = plugin.pre_llm_call(platform="telegram")["context"]
+        self.assertIn("current real user message can support a USER write", context)
+        self.assertNotIn("current review prompt is synthetic", context)
 
     def test_background_rejection_blocks_changed_sibling_and_memory_workarounds(self):
         plugin = load_plugin()
