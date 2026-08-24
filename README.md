@@ -42,7 +42,7 @@ See the [technical architecture](docs/architecture.md) for the runtime flow, ret
 
 ## Install from source
 
-Version `0.8.3` has been tested with Hermes Agent `0.20.4`. Install a reviewed commit rather than the moving `main` branch:
+Version `0.8.3` has been tested with Hermes Agent `0.20.4` and `0.20.5`. Install a reviewed commit rather than the moving `main` branch:
 
 ```bash
 hermes plugins install Kayhusk/hermes-learn-policy \
@@ -100,10 +100,20 @@ The plugin does not:
 - control writes that do not pass through model-requested tools;
 - guarantee that every accepted learning item is useful.
 
+Report suspected vulnerabilities through the [security policy](SECURITY.md).
+
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) records changes by source version.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development checks and compatibility rules.
+
+## Author
+
+Created and maintained by [Edward Anthony Escudero Bowie](https://portfolio.kydek.com) ([GitHub](https://github.com/Kayhusk)).
+
 ## License
 
-No license is granted for this repository. Source visibility does not grant permission to copy, modify, or redistribute it.
+Licensed under the MIT License. See [LICENSE](LICENSE).

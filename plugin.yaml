@@ -1,6 +1,8 @@
 name: hermes-learn-policy
 version: "0.8.3"
 description: Apply learning policy before Hermes saves USER, MEMORY, or skill content.
+author: Edward Anthony Escudero Bowie
+license: MIT
 provides_hooks:
   - pre_llm_call
   - pre_tool_call

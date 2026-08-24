@@ -33,6 +33,8 @@ class PluginContractTest(unittest.TestCase):
     def test_manifest_declares_v083_dynamic_hooks(self):
         manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], "0.8.3")
+        self.assertEqual(manifest["author"], "Edward Anthony Escudero Bowie")
+        self.assertEqual(manifest["license"], "MIT")
         self.assertEqual(manifest.get("manifest_version", 1), 1)
         self.assertEqual(
             set(manifest["provides_hooks"]),

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added the MIT License, author information, contribution guidance, repository CI, and private security reporting.
+
 ## 0.8.3
 
 - Resolved the active profile home through Hermes, including profiles served by a shared gateway.

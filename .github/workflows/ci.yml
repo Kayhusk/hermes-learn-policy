@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 987064caa4f8845f605ac7346fed5b72fddfb21c
+          path: hermes-host
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tested Hermes host
+        run: python -m pip install -e hermes-host
+      - name: Run plugin tests
+        working-directory: plugin
+        run: python -m unittest -v test_plugin.py
+      - name: Compile source
+        working-directory: plugin
+        run: python -m py_compile __init__.py compat.py gate.py test_plugin.py
+      - name: Run Plugin Doctor
+        working-directory: plugin
+        run: hermes plugins doctor . --ci
+      - name: Check the diff
+        working-directory: plugin
+        run: git diff --check
