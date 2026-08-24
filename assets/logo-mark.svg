@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Hermes Learn Policy mark</title>
+  <desc id="desc">Three learning owners crossed by one shared policy rule.</desc>
+  <rect x="16" y="113" width="224" height="24" rx="5" fill="#ff6e14"/>
+  <path fill="#1a1614" d="M43 38h38a7 7 0 0 1 7 7v168l-26-20-26 20V45a7 7 0 0 1 7-7Z"/>
+  <path fill="#1a1614" d="M111 38h34a7 7 0 0 1 7 7v139a24 24 0 0 1-24 24 24 24 0 0 1-24-24V45a7 7 0 0 1 7-7Z"/>
+  <path fill="#1a1614" d="M175 38h38a7 7 0 0 1 7 7v168l-26-20-26 20V45a7 7 0 0 1 7-7Z"/>
+</svg>

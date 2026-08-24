@@ -1,5 +1,9 @@
 # Hermes Learn Policy
 
+<p align="center">
+  <img src="assets/logo-mark.svg" width="112" alt="Hermes Learn Policy logo">
+</p>
+
 Hermes Learn Policy governs when a Hermes agent may save USER facts, MEMORY facts, or skills. It adds learning guidance before model calls and checks learning-related tool calls before Hermes runs them. Hermes remains the only component that writes lasting learning files.
 
 ## What it does
